@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>PeerVo - P2P IP Phone</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Material 3-friendly Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- PeerJS WebRTC framework -->
+  <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"Roboto Mono"', 'monospace'],
+          },
+          colors: {
+            m3: {
+              background: '#0F0E11',      // Pure AMOLED dark background
+              surface: '#151318',         // Deep obsidian container/surfaces
+              surfaceVariant: '#1F1C24',  // Elevated secondary modules
+              primary: '#D0BCFF',         // Soft pastel purple primary
+              primaryContainer: '#381E72',// Premium royal purple backplates
+              onPrimaryContainer: '#EADDFF',
+              secondary: '#CCC2DC',       
+              secondaryContainer: '#332D41', // Navigation Active pill backplate
+              onSecondaryContainer: '#E8DEF8',
+              error: '#F2B8B5',
+              outline: '#938F99',
+              neutralVariant: '#E6E1E5',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #0F0E11;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* Smooth transition for active tab content */
+    .tab-view {
+      transition: opacity 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    /* Hidden utility */
+    .hidden-view {
+      display: none !important;
+    }
+    /* Pulse rings for call overlays */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.3); opacity: 0.3; }
+      100% { transform: scale(1.7); opacity: 0; }
+    }
+    .m3-ring {
+      animation: pulse-ring 2.5s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+    }
+    /* Smooth Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #332D41;
+      border-radius: 99px;
+    }
+  </style>
+</head>
+<body class="text-m3-neutralVariant h-full flex flex-col overflow-hidden">
+
+  <div id="app" class="w-full h-full flex flex-col justify-between bg-m3-background relative overflow-hidden">
+    
+    <!-- Top System/App Bar -->
+    <header class="px-6 py-4 bg-m3-surface border-b border-slate-900/80 shrink-0">
+      <div class="flex items-center gap-3 max-w-7xl mx-auto w-full justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-2xl bg-m3-primaryContainer flex items-center justify-center shadow-lg shadow-purple-950/25">
+            <i data-lucide="phone" class="w-4.5 h-4.5 text-m3-primary"></i>
+          </div>
+          <div class="flex flex-col">
+            <span class="font-bold tracking-wide text-white text-base leading-none">PeerVo</span>
+            <span class="text-[9px] text-slate-500 font-medium tracking-widest uppercase mt-0.5">Secure P2P Voice & Video</span>
+          </div>
+        </div>
+        <!-- Minimal status dot -->
+        <div class="flex items-center gap-2 px-3.5 py-1.5 bg-m3-surfaceVariant rounded-full text-[11px] font-medium border border-slate-800/40" id="status-chip">
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-500" id="status-indicator-dot"></span>
+          <span id="connection-status" class="text-slate-300 font-medium">Connecting...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN VIEWS CONTAINER -->
+    <main class="flex-1 overflow-y-auto px-6 py-4 flex flex-col relative w-full max-w-4xl mx-auto">
+      
+      <div id="screen-register" class="hidden flex-1 flex flex-col justify-center py-6 w-full max-w-md mx-auto">
+        <div class="text-center mb-8">
+          <h1 class="text-3xl font-extrabold tracking-tight text-white mb-2">Claim Your Line</h1>
+          <p class="text-sm text-slate-400">Assign a personalized 10-digit number to launch high-fidelity secure P2P voice and video calls.</p>
+        </div>
+
+        <div class="space-y-5 bg-m3-surfaceVariant p-6 rounded-3xl border border-slate-800/60 shadow-xl">
+          <div>
+            <label class="block text-xs font-semibold text-m3-primary mb-2 uppercase tracking-wider">Desired Phone Number</label>
+            <div class="relative">
+              <input type="text" id="reg-phone" maxlength="10" placeholder="e.g. 2125550199" 
+                     class="w-full px-4 py-4 bg-m3-surface rounded-2xl border border-slate-700/60 text-center tracking-[0.15em] font-mono text-xl text-white focus:outline-none focus:ring-2 focus:ring-m3-primary transition">
+              <button onclick="generateRandomNumber()" class="absolute right-4 top-4 text-m3-primary hover:text-white p-1" title="Generate Random">
+                <i data-lucide="shuffle" class="w-5 h-5"></i>
+              </button>
+            </div>
+          </div>
+
+          <button onclick="registerPeerVoNumber()" id="btn-register" class="w-full py-4 bg-m3-primaryContainer hover:bg-opacity-95 active:scale-95 transition-all rounded-2xl font-bold flex items-center justify-center gap-2 text-m3-onPrimaryContainer shadow-md">
+            <span>Register Line</span>
+            <i data-lucide="chevron-right" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="view-dialer" class="tab-view flex-1 flex flex-col justify-between hidden-view max-w-md mx-auto w-full">
+        <div class="text-center relative py-6">
+          <input type="text" id="dial-number" readonly placeholder="Enter Number" 
+                 class="w-full bg-transparent text-center font-mono text-4xl font-semibold tracking-widest text-white placeholder-slate-800 focus:outline-none">
+          <button onclick="dialerBackspace()" class="absolute right-2 top-8 p-1.5 text-slate-400 hover:text-white rounded-full hover:bg-m3-surfaceVariant transition">
+            <i data-lucide="delete" class="w-6 h-6"></i>
+          </button>
+        </div>
+
+        <!-- Keypad Grid -->
+        <div class="grid grid-cols-3 gap-y-4 gap-x-8 max-w-[280px] mx-auto mb-6">
+          <button onclick="pressKey('1')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">1</span>
+            <span class="text-[9px] text-slate-400">o_o</span>
+          </button>
+          <button onclick="pressKey('2')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">2</span>
+            <span class="text-[9px] text-slate-400">ABC</span>
+          </button>
+          <button onclick="pressKey('3')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">3</span>
+            <span class="text-[9px] text-slate-400">DEF</span>
+          </button>
+
+          <button onclick="pressKey('4')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">4</span>
+            <span class="text-[9px] text-slate-400">GHI</span>
+          </button>
+          <button onclick="pressKey('5')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">5</span>
+            <span class="text-[9px] text-slate-400">JKL</span>
+          </button>
+          <button onclick="pressKey('6')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">6</span>
+            <span class="text-[9px] text-slate-400">MNO</span>
+          </button>
+
+          <button onclick="pressKey('7')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">7</span>
+            <span class="text-[9px] text-slate-400">PQRS</span>
+          </button>
+          <button onclick="pressKey('8')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">8</span>
+            <span class="text-[9px] text-slate-400">TUV</span>
+          </button>
+          <button onclick="pressKey('9')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">9</span>
+            <span class="text-[9px] text-slate-400">WXYZ</span>
+          </button>
+
+          <button onclick="pressKey('*')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">*</span>
+          </button>
+          <button onclick="pressKey('0')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">0</span>
+            <span class="text-[9px] text-slate-400">+</span>
+          </button>
+          <button onclick="pressKey('#')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex items-center justify-center transition">
+            <span class="text-2xl font-semibold text-white">#</span>
+          </button>
+        </div>
+
+        <!-- Calling Control Actions -->
+        <div class="flex justify-center gap-6 mt-2 mb-4">
+          <!-- Voice Call -->
+          <button onclick="startOutgoingCall(false)" class="w-16 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white flex items-center justify-center shadow-lg transition">
+            <i data-lucide="phone" class="w-7 h-7"></i>
+          </button>
+          <!-- Video Call -->
+          <button onclick="startOutgoingCall(true)" class="w-16 h-16 rounded-2xl bg-m3-primaryContainer text-m3-onPrimaryContainer hover:opacity-95 active:scale-95 flex items-center justify-center shadow-lg transition">
+            <i data-lucide="video" class="w-7 h-7"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="view-contacts" class="tab-view flex-1 flex flex-col justify-start hidden-view w-full">
+        <!-- Add Contact Mini Form -->
+        <div class="bg-m3-surfaceVariant p-5 rounded-3xl border border-slate-800/50 mb-6 mt-2">
+          <h3 class="text-xs font-bold text-m3-primary mb-3.5 uppercase tracking-wider flex items-center gap-2">
+            <i data-lucide="user-plus" class="w-4 h-4"></i> Create Contact
+          </h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3.5">
+            <input type="text" id="contact-name" placeholder="Contact Name" class="px-4 py-3 bg-m3-surface rounded-xl text-sm border border-slate-700/60 focus:outline-none focus:ring-1 focus:ring-m3-primary text-white">
+            <input type="text" id="contact-phone" maxlength="10" placeholder="10 digits number" class="px-4 py-3 bg-m3-surface rounded-xl text-sm border border-slate-700/60 font-mono focus:outline-none focus:ring-1 focus:ring-m3-primary text-white">
+          </div>
+          <button onclick="saveContact()" class="w-full py-3 bg-m3-primaryContainer text-m3-onPrimaryContainer hover:opacity-95 text-sm font-bold rounded-xl transition shadow-md">
+            Save to Contacts
+          </button>
+        </div>
+
+        <!-- List Container -->
+        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3 px-1">Saved Directories</h3>
+        <div class="flex-1 overflow-y-auto space-y-2.5 max-h-[460px] pr-1" id="contacts-list">
+          <!-- Dynamic items -->
+        </div>
+      </div>
+
+      <div id="view-history" class="tab-view flex-1 flex flex-col justify-start hidden-view w-full">
+        <div class="flex justify-between items-center mb-4 mt-2 px-1">
+          <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Call Logs</h3>
+          <button onclick="clearCallHistory()" class="text-xs font-bold text-red-400 hover:text-red-300 transition">Clear Logs</button>
+        </div>
+        <div class="flex-1 overflow-y-auto space-y-2.5 max-h-[560px] pr-1" id="logs-list">
+          <!-- Dynamic items -->
+        </div>
+      </div>
+
+      <div id="view-settings" class="tab-view flex-1 flex flex-col justify-start hidden-view space-y-6 w-full">
+        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-2">Settings & Identity</h3>
+        
+        <!-- Active Profile Card -->
+        <div class="bg-m3-surfaceVariant p-6 rounded-3xl border border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <p class="text-[10px] text-m3-primary uppercase font-bold tracking-widest">Active PeerVo Number</p>
+            <h2 id="settings-number" class="text-3xl font-bold font-mono tracking-wider text-white mt-1">--- --- ----</h2>
+          </div>
+          <div class="flex gap-2 w-full md:w-auto shrink-0">
+            <button onclick="copyMyNumber()" class="flex-1 md:flex-initial px-5 py-3 rounded-xl bg-m3-surface hover:bg-slate-800 text-slate-200 transition text-sm font-medium flex items-center justify-center gap-2 border border-slate-800/60">
+              <i data-lucide="copy" class="w-4 h-4"></i> Copy Line
+            </button>
+            <button onclick="logoutNumber()" class="px-5 py-3 rounded-xl bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 text-red-400 transition text-sm font-medium flex items-center justify-center gap-1.5">
+              <i data-lucide="log-out" class="w-4 h-4"></i> Deregister
+            </button>
+          </div>
+        </div>
+
+        <!-- Settings Options (Material 3 Card List) -->
+        <div class="bg-m3-surfaceVariant rounded-3xl overflow-hidden border border-slate-800/60 divide-y divide-slate-800">
+          
+          <!-- Notification Option -->
+          <div class="p-5 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+              <div class="p-3 bg-m3-surface rounded-2xl text-m3-primary shadow-inner">
+                <i data-lucide="bell" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <p class="font-semibold text-sm text-white">Notifications</p>
+                <p class="text-xs text-slate-400">Keep line active & enable background alerts</p>
+              </div>
+            </div>
+            <div>
+              <!-- Slide Switch for Service Worker/Notifications -->
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="notification-toggle" onchange="toggleNotifications(this)" class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-m3-primary"></div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Connection Route Info -->
+          <div class="p-5 flex items-center gap-4">
+            <div class="p-3 bg-m3-surface rounded-2xl text-m3-primary shadow-inner">
+              <i data-lucide="globe" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <p class="font-semibold text-sm text-white">Connection Route</p>
+              <p id="route-indicator" class="text-xs font-mono text-slate-400">Direct Local P2P Namespace</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Outgoing Call Overlay -->
+    <div id="screen-calling" class="hidden absolute inset-0 bg-m3-surface flex flex-col justify-between items-center px-6 py-16 z-40">
+      <div class="text-center mt-12 max-w-md mx-auto">
+        <div class="relative w-32 h-32 mx-auto mb-8 flex items-center justify-center">
+          <div class="absolute inset-0 bg-m3-primary/10 rounded-full m3-ring"></div>
+          <div class="absolute inset-0 bg-m3-primary/20 rounded-full m3-ring" style="animation-delay: 0.8s"></div>
+          <div class="w-24 h-24 rounded-full bg-m3-surfaceVariant border border-m3-primary/30 flex items-center justify-center relative z-10 shadow-lg">
+            <i data-lucide="user" class="w-12 h-12 text-m3-primary"></i>
+          </div>
+        </div>
+        <h3 id="calling-phone-display" class="text-3xl font-bold font-mono tracking-wider text-white">000 000 0000</h3>
+        <p id="calling-name-display" class="text-sm text-slate-400 mt-1">Unknown Contact</p>
+        <p id="calling-status-text" class="text-base font-semibold text-m3-primary mt-8 animate-pulse">Dialing...</p>
+      </div>
+
+      <div class="w-full flex justify-center mb-8">
+        <button onclick="hangUpCall()" class="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-white shadow-xl active:scale-95 transition-all">
+          <i data-lucide="phone-off" class="w-7 h-7"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Incoming Call Overlay -->
+    <div id="screen-incoming" class="hidden absolute inset-0 bg-m3-surface flex flex-col justify-between items-center px-6 py-16 z-40">
+      <div class="text-center mt-12 max-w-md mx-auto">
+        <div class="relative w-32 h-32 mx-auto mb-8 flex items-center justify-center">
+          <div class="absolute inset-0 bg-emerald-500/10 rounded-full m3-ring"></div>
+          <div class="absolute inset-0 bg-emerald-500/20 rounded-full m3-ring" style="animation-delay: 0.8s"></div>
+          <div class="w-24 h-24 rounded-full bg-m3-surfaceVariant border border-emerald-500/30 flex items-center justify-center relative z-10 shadow-lg">
+            <i data-lucide="phone-incoming" class="w-12 h-12 text-emerald-400"></i>
+          </div>
+        </div>
+        <h3 id="incoming-phone-display" class="text-3xl font-bold font-mono tracking-wider text-white">000 000 0000</h3>
+        <p id="incoming-name-display" class="text-sm text-slate-400 mt-1">Incoming Call</p>
+        <p id="incoming-type-text" class="text-base font-semibold text-emerald-400 mt-8">PeerVo Incoming call</p>
+      </div>
+
+      <div class="w-full max-w-xs flex justify-around mb-8 mx-auto">
+        <button onclick="declineIncomingCall()" class="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition">
+          <i data-lucide="phone-off" class="w-7 h-7"></i>
+        </button>
+        <button onclick="acceptIncomingCall()" class="w-16 h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition">
+          <i data-lucide="phone" class="w-7 h-7"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Active Call Screen Overlay -->
+    <div id="screen-active-call" class="hidden absolute inset-0 bg-black flex flex-col justify-between z-40">
+      <!-- Media Stream Trackers -->
+      <div class="absolute inset-0 flex flex-col justify-center items-center bg-zinc-950">
+        <!-- Remote Video -->
+        <div class="relative w-full h-full flex items-center justify-center">
+          <video id="remote-video" class="w-full h-full object-cover" autoplay playsinline></video>
+          
+          <!-- Minimal Audio Indicator if video is not currently transmitting -->
+          <div id="audio-call-indicator" class="absolute inset-0 flex flex-col justify-center items-center bg-zinc-900/95">
+            <div class="w-24 h-24 rounded-full bg-m3-primaryContainer flex items-center justify-center animate-pulse mb-4">
+              <i data-lucide="mic" class="w-10 h-10 text-m3-primary"></i>
+            </div>
+            <p class="text-white font-semibold text-lg animate-pulse" id="active-call-timer">Connected (00:00)</p>
+          </div>
+        </div>
+
+        <!-- Local Picture in Picture Frame -->
+        <div id="local-video-container" class="absolute top-6 right-6 w-28 sm:w-36 h-40 sm:h-52 rounded-2xl border border-slate-700/80 overflow-hidden shadow-2xl bg-slate-900 transition-all z-50">
+          <video id="local-video" class="w-full h-full object-cover transform -scale-x-100" autoplay playsinline muted></video>
+        </div>
+      </div>
+
+      <!-- Floating top state tag -->
+      <div class="absolute top-6 left-6 flex justify-between items-center z-50">
+        <div class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+          <span id="active-call-details" class="text-xs font-mono tracking-wider font-semibold text-white">Call Active</span>
+        </div>
+      </div>
+
+      <!-- Overlaid Calling controls -->
+      <div class="absolute bottom-10 left-0 right-0 px-6 flex justify-center items-center gap-4 z-50 max-w-md mx-auto w-full">
+        <!-- Mute Mic -->
+        <button id="btn-toggle-mic" onclick="toggleMuteMic()" class="w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white transition active:scale-90">
+          <i data-lucide="mic" id="icon-mic" class="w-5.5 h-5.5"></i>
+        </button>
+        <!-- Hangup (Red Pill) -->
+        <button onclick="hangUpCall()" class="w-24 h-16 rounded-[2rem] bg-red-600 hover:bg-red-500 flex items-center justify-center text-white shadow-xl transition active:scale-90">
+          <i data-lucide="phone-off" class="w-6 h-6"></i>
+        </button>
+        <!-- Toggle Camera -->
+        <button id="btn-toggle-camera" onclick="toggleMuteCamera()" class="w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white transition active:scale-90">
+          <i data-lucide="video" id="icon-camera" class="w-5.5 h-5.5"></i>
+        </button>
+      </div>
+    </div>
+
+    <nav id="nav-bottom-bar" class="bg-m3-surface py-3 border-t border-slate-900/85 shrink-0 hidden">
+      <div class="grid grid-cols-4 text-center max-w-md mx-auto w-full px-2">
+        <!-- Tab: Dialer -->
+        <button onclick="navigateTo('dialer')" id="nav-dialer" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
+          <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
+            <i data-lucide="phone" class="w-5 h-5"></i>
+          </div>
+          <span class="font-medium mt-0.5 text-[10px]">Dialer</span>
+        </button>
+        <!-- Tab: Contacts -->
+        <button onclick="navigateTo('contacts')" id="nav-contacts" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
+          <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
+            <i data-lucide="users" class="w-5 h-5"></i>
+          </div>
+          <span class="font-medium mt-0.5 text-[10px]">Contacts</span>
+        </button>
+        <!-- Tab: Logs -->
+        <button onclick="navigateTo('history')" id="nav-history" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
+          <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
+            <i data-lucide="clock" class="w-5 h-5"></i>
+          </div>
+          <span class="font-medium mt-0.5 text-[10px]">Logs</span>
+        </button>
+        <!-- Tab: Settings -->
+        <button onclick="navigateTo('settings')" id="nav-settings" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
+          <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
+            <i data-lucide="settings" class="w-5 h-5"></i>
+          </div>
+          <span class="font-medium mt-0.5 text-[10px]">Settings</span>
+        </button>
+      </div>
+    </nav>
+
+    <div id="toast-banner" class="absolute bottom-24 left-6 right-6 md:left-auto md:right-6 md:w-96 bg-m3-surfaceVariant border border-slate-800 text-white px-5 py-4 rounded-2xl text-xs hidden flex items-center justify-between shadow-2xl z-50 transition transform translate-y-2 opacity-0">
+      <span id="toast-message" class="font-medium">Notification Alert</span>
+      <button onclick="hideToast()" class="p-1 rounded hover:bg-slate-800 text-slate-400 transition">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+  </div>
+
+  <script>
+    const REGISTRY_SERVER_URL = "http://localhost:5000";
+    let peer = null;
+    let localStream = null;
+    let activeCall = null;
+    let myPhoneNumber = "";
+    let isServerAvailable = false;
+    let activeCallTimerId = null;
+    let callDurationSec = 0;
+    let audioCtx = null;
+
+    const state = {
+      isMuted: false,
+      isCamDisabled: false,
+      isVideoCall: false,
+      activeView: 'dialer'
+    };
+
+    // Parse data layers
+    let contacts = JSON.parse(localStorage.getItem('peervo_contacts')) || [];
+    let callLogs = JSON.parse(localStorage.getItem('peervo_logs')) || [];
+
+    window.addEventListener('load', () => {
+      lucide.createIcons();
+      checkServerHealth();
+      loadNotificationOptionState();
+      loadStoredSession();
+      renderContacts();
+      renderLogs();
+    });
+
+    async function checkServerHealth() {
+      const statusText = document.getElementById('connection-status');
+      const dot = document.getElementById('status-indicator-dot');
+      const routeIndicator = document.getElementById('route-indicator');
+
+      try {
+        const response = await fetch(`${REGISTRY_SERVER_URL}/api/status`, { signal: AbortSignal.timeout(1500) });
+        if (response.ok) {
+          isServerAvailable = true;
+          routeIndicator.textContent = "Registry directory routing online";
+        } else {
+          throw new Error("Local registry failed probe");
+        }
+      } catch (err) {
+        isServerAvailable = false;
+        routeIndicator.textContent = "Direct Peer-ID Namespace Mapping";
+      }
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast-banner');
+      const text = document.getElementById('toast-message');
+      text.textContent = message;
+      toast.classList.remove('hidden');
+      setTimeout(() => {
+        toast.classList.add('translate-y-0', 'opacity-100');
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 50);
+      
+      setTimeout(() => { hideToast(); }, 4000);
+    }
+
+    function hideToast() {
+      const toast = document.getElementById('toast-banner');
+      toast.classList.add('translate-y-2', 'opacity-0');
+      toast.classList.remove('translate-y-0', 'opacity-100');
+      setTimeout(() => { toast.classList.add('hidden'); }, 300);
+    }
+
+    function loadStoredSession() {
+      const savedNum = localStorage.getItem('peervo_number');
+      if (savedNum && savedNum.length === 10) {
+        myPhoneNumber = savedNum;
+        initiatePeerJS(savedNum);
+      } else {
+        showScreen('screen-register');
+        document.getElementById('nav-bottom-bar').classList.add('hidden');
+      }
+    }
+
+    function generateRandomNumber() {
+      let num = "";
+      for (let i = 0; i < 10; i++) {
+        num += Math.floor(Math.random() * 10);
+      }
+      document.getElementById('reg-phone').value = num;
+    }
+
+    async function registerPeerVoNumber() {
+      const numInput = document.getElementById('reg-phone').value.trim();
+      if (numInput.length !== 10 || !/^\d+$/.test(numInput)) {
+        showToast("Please enter a valid 10-digit number.");
+        return;
+      }
+
+      const btn = document.getElementById('btn-register');
+      btn.disabled = true;
+      btn.innerText = "Provisioning Line...";
+
+      myPhoneNumber = numInput;
+      localStorage.setItem('peervo_number', numInput);
+      initiatePeerJS(numInput);
+    }
+
+    function initiatePeerJS(phoneNumber) {
+      const statusText = document.getElementById('connection-status');
+      const dot = document.getElementById('status-indicator-dot');
+
+      statusText.textContent = "Connecting...";
+      dot.className = "w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
+
+      peer = new Peer(`peervo-${phoneNumber}`);
+
+      peer.on('open', async (id) => {
+        statusText.textContent = "Line Active";
+        dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+        
+        document.getElementById('settings-number').textContent = formatPhone(phoneNumber);
+        
+        if (isServerAvailable) {
+          try {
+            await fetch(`${REGISTRY_SERVER_URL}/api/register`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ number: phoneNumber, peerId: id })
+            });
+          } catch (err) {
+            console.warn("Could not register with central directory database.", err);
+          }
+        }
+
+        document.getElementById('nav-bottom-bar').classList.remove('hidden');
+        navigateTo('dialer');
+      });
+
+      peer.on('error', (err) => {
+        console.error('PeerJS Broker Error:', err);
+        statusText.textContent = "Offline";
+        dot.className = "w-2.5 h-2.5 rounded-full bg-red-500";
+        
+        if (err.type === 'unavailable-id') {
+          showToast("Identity conflict! That phone line is already claimed.");
+          logoutNumber();
+        }
+      });
+
+      peer.on('call', (incomingCall) => {
+        activeCall = incomingCall;
+        const callerID = incomingCall.peer.replace('peervo-', '');
+        const isVideoIncoming = incomingCall.options && incomingCall.options.metadata && incomingCall.options.metadata.video;
+        state.isVideoCall = isVideoIncoming;
+
+        showIncomingCallScreen(callerID, isVideoIncoming);
+        
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'INCOMING_CALL',
+            caller: callerID,
+            isVideo: isVideoIncoming
+          });
+        }
+      });
+    }
+
+    function formatPhone(num) {
+      if (!num || num.length !== 10) return num;
+      return `(${num.slice(0,3)}) ${num.slice(3,6)}-${num.slice(6)}`;
+    }
+
+    function playTone(freq1, freq2, duration) {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        osc1.frequency.value = freq1;
+        osc2.frequency.value = freq2;
+
+        gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.005, audioCtx.currentTime + duration);
+
+        osc1.connect(gainNode);
+        osc2.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        osc1.start();
+        osc2.start();
+
+        osc1.stop(audioCtx.currentTime + duration);
+        osc2.stop(audioCtx.currentTime + duration);
+      } catch (err) {
+        console.warn("AudioContext tone blocked by user policy", err);
+      }
+    }
+
+    function playKeyTone(key) {
+      const dtmfFreqs = {
+        '1': [697, 1209], '2': [697, 1336], '3': [697, 1477],
+        '4': [770, 1209], '5': [770, 1336], '6': [770, 1477],
+        '7': [852, 1209], '8': [852, 1336], '9': [852, 1477],
+        '*': [941, 1209], '0': [941, 1336], '#': [941, 1477]
+      };
+      if (dtmfFreqs[key]) {
+        playTone(dtmfFreqs[key][0], dtmfFreqs[key][1], 0.12);
+      }
+    }
+
+    function pressKey(key) {
+      const dialInput = document.getElementById('dial-number');
+      if (dialInput.value.length < 10 && /^[0-9]$/.test(key)) {
+        dialInput.value += key;
+      }
+      playKeyTone(key);
+    }
+
+    function dialerBackspace() {
+      const dialInput = document.getElementById('dial-number');
+      dialInput.value = dialInput.value.slice(0, -1);
+    }
+
+    function navigateTo(viewId) {
+      state.activeView = viewId;
+      
+      // CRITICAL: Ensure the register screen and any overlay call interfaces are hidden on standard view switches
+      document.getElementById('screen-register').classList.add('hidden');
+      document.getElementById('screen-calling').classList.add('hidden');
+      document.getElementById('screen-incoming').classList.add('hidden');
+      document.getElementById('screen-active-call').classList.add('hidden');
+      
+      // Ensure the bottom nav bar remains visible
+      document.getElementById('nav-bottom-bar').classList.remove('hidden');
+
+      const views = ['dialer', 'contacts', 'history', 'settings'];
+      views.forEach(v => {
+        const viewEl = document.getElementById(`view-${v}`);
+        const navBtn = document.getElementById(`nav-${v}`);
+        
+        if (v === viewId) {
+          viewEl.classList.remove('hidden-view');
+          navBtn.classList.remove('text-slate-400');
+          navBtn.classList.add('text-m3-primary');
+          
+          const pill = navBtn.querySelector('.nav-pill');
+          if (pill) {
+            pill.classList.add('bg-m3-secondaryContainer', 'text-m3-onSecondaryContainer');
+          }
+        } else {
+          viewEl.classList.add('hidden-view');
+          navBtn.classList.remove('text-m3-primary');
+          navBtn.classList.add('text-slate-400');
+          
+          const pill = navBtn.querySelector('.nav-pill');
+          if (pill) {
+            pill.classList.remove('bg-m3-secondaryContainer', 'text-m3-onSecondaryContainer');
+          }
+        }
+      });
+      lucide.createIcons();
+    }
+
+    function saveContact() {
+      const name = document.getElementById('contact-name').value.trim();
+      const phone = document.getElementById('contact-phone').value.trim();
+
+      if (!name || phone.length !== 10 || !/^\d+$/.test(phone)) {
+        showToast("Invalid profile name or 10-digit number.");
+        return;
+      }
+
+      contacts.push({ name, phone });
+      localStorage.setItem('peervo_contacts', JSON.stringify(contacts));
+      
+      document.getElementById('contact-name').value = '';
+      document.getElementById('contact-phone').value = '';
+      
+      renderContacts();
+      showToast(`Added ${name}`);
+    }
+
+    function renderContacts() {
+      const list = document.getElementById('contacts-list');
+      if (contacts.length === 0) {
+        list.innerHTML = `<div class="text-center py-10 text-xs text-slate-500 bg-m3-surfaceVariant rounded-3xl border border-slate-800/40">Your directory is empty</div>`;
+        return;
+      }
+
+      list.innerHTML = contacts.map((c, idx) => `
+        <div class="flex items-center justify-between p-4 bg-m3-surfaceVariant rounded-2xl border border-slate-800/40">
+          <div>
+            <p class="font-bold text-white text-sm">${c.name}</p>
+            <p class="text-xs text-m3-primary font-mono mt-0.5">${formatPhone(c.phone)}</p>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="dialAndCall('${c.phone}', false)" class="p-2.5 bg-m3-surface hover:bg-slate-800 text-emerald-400 rounded-xl transition">
+              <i data-lucide="phone" class="w-4 h-4"></i>
+            </button>
+            <button onclick="dialAndCall('${c.phone}', true)" class="p-2.5 bg-m3-surface hover:bg-slate-800 text-m3-primary rounded-xl transition">
+              <i data-lucide="video" class="w-4 h-4"></i>
+            </button>
+            <button onclick="deleteContact(${idx})" class="p-2.5 bg-m3-surface hover:bg-red-950/20 text-red-400 rounded-xl transition">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    }
+
+    function deleteContact(idx) {
+      contacts.splice(idx, 1);
+      localStorage.setItem('peervo_contacts', JSON.stringify(contacts));
+      renderContacts();
+    }
+
+    function dialAndCall(phone, isVideo) {
+      document.getElementById('dial-number').value = phone;
+      navigateTo('dialer');
+      startOutgoingCall(isVideo);
+    }
+
+    function addLog(type, phone, durationText = "") {
+      const contact = contacts.find(c => c.phone === phone);
+      const name = contact ? contact.name : "Direct Dial";
+      const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      callLogs.unshift({ type, phone, name, timestamp, duration: durationText });
+      if (callLogs.length > 30) callLogs.pop();
+
+      localStorage.setItem('peervo_logs', JSON.stringify(callLogs));
+      renderLogs();
+    }
+
+    function renderLogs() {
+      const list = document.getElementById('logs-list');
+      if (callLogs.length === 0) {
+        list.innerHTML = `<div class="text-center py-10 text-xs text-slate-500 bg-m3-surfaceVariant rounded-3xl border border-slate-800/40">No activity recorded</div>`;
+        return;
+      }
+
+      list.innerHTML = callLogs.map(log => {
+        let iconClass = "text-m3-primary";
+        let iconName = "phone-call";
+
+        if (log.type === 'missed') {
+          iconClass = "text-red-400";
+          iconName = "phone-missed";
+        } else if (log.type === 'incoming') {
+          iconClass = "text-emerald-400";
+          iconName = "phone-incoming";
+        }
+
+        return `
+          <div class="flex items-center justify-between p-4 bg-m3-surfaceVariant rounded-2xl border border-slate-800/20">
+            <div class="flex items-center gap-3">
+              <div class="p-2.5 bg-m3-surface rounded-xl ${iconClass}">
+                <i data-lucide="${iconName}" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <p class="font-bold text-white text-sm">${log.name}</p>
+                <p class="text-xs text-slate-400 font-mono mt-0.5">${formatPhone(log.phone)}</p>
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="text-[11px] text-slate-400 font-medium">${log.timestamp}</p>
+              ${log.duration ? `<p class="text-[10px] text-m3-primary font-mono mt-0.5">${log.duration}</p>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+      lucide.createIcons();
+    }
+
+    function clearCallHistory() {
+      callLogs = [];
+      localStorage.setItem('peervo_logs', JSON.stringify(callLogs));
+      renderLogs();
+    }
+
+    async function startOutgoingCall(isVideo) {
+      const dialInput = document.getElementById('dial-number');
+      const targetPhone = dialInput.value.trim();
+
+      if (targetPhone.length !== 10 || !/^\d+$/.test(targetPhone)) {
+        showToast("Invalid peer line number specified.");
+        return;
+      }
+
+      if (targetPhone === myPhoneNumber) {
+        showToast("You cannot dial your own line number.");
+        return;
+      }
+
+      state.isVideoCall = isVideo;
+
+      const contact = contacts.find(c => c.phone === targetPhone);
+      document.getElementById('calling-phone-display').textContent = formatPhone(targetPhone);
+      document.getElementById('calling-name-display').textContent = contact ? contact.name : "Direct Line";
+      document.getElementById('calling-status-text').textContent = "Locating Line...";
+
+      showScreen('screen-calling');
+
+      let targetPeerID = `peervo-${targetPhone}`;
+
+      if (isServerAvailable) {
+        try {
+          const resp = await fetch(`${REGISTRY_SERVER_URL}/api/lookup/${targetPhone}`);
+          if (resp.status === 200) {
+            const data = await resp.json();
+            if (data.exists) {
+              targetPeerID = data.peerId;
+            }
+          }
+        } catch (e) {
+          console.warn("Central Registry lookup failure. Proceeding via direct peer mapping.");
+        }
+      }
+
+      document.getElementById('calling-status-text').textContent = "Ringing...";
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: isVideo,
+          audio: true
+        });
+
+        simulateRingbackTone();
+
+        const outgoingCall = peer.call(targetPeerID, localStream, {
+          metadata: { video: isVideo }
+        });
+
+        activeCall = outgoingCall;
+        setupCallStreamHandlers(outgoingCall, targetPhone);
+
+      } catch (err) {
+        console.error("Critical stream error: ", err);
+        showToast("Line connection rejected (Check Mic/Camera permissions).");
+        hangUpCall();
+      }
+    }
+
+    function showIncomingCallScreen(callerNumber, isVideo) {
+      const contact = contacts.find(c => c.phone === callerNumber);
+      
+      document.getElementById('incoming-phone-display').textContent = formatPhone(callerNumber);
+      document.getElementById('incoming-name-display').textContent = contact ? contact.name : "Unrecognized ID";
+      document.getElementById('incoming-type-text').textContent = `Incoming PeerVo ${isVideo ? 'Video' : 'Audio'} Call`;
+      
+      showScreen('screen-incoming');
+      simulateIncomingRingtone(true);
+    }
+
+    async function acceptIncomingCall() {
+      simulateIncomingRingtone(false);
+      if (!activeCall) return;
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: state.isVideoCall,
+          audio: true
+        });
+
+        activeCall.answer(localStream);
+        const callerPhone = activeCall.peer.replace('peervo-', '');
+        
+        setupCallStreamHandlers(activeCall, callerPhone);
+        showActiveCallScreen();
+
+      } catch (err) {
+        console.error("Stream access rejected:", err);
+        showToast("Error answering: Local camera/audio unavailable.");
+        hangUpCall();
+      }
+    }
+
+    function declineIncomingCall() {
+      simulateIncomingRingtone(false);
+      if (activeCall) {
+        activeCall.close();
+      }
+      const callerPhone = activeCall ? activeCall.peer.replace('peervo-', '') : "0000000000";
+      addLog('missed', callerPhone);
+      activeCall = null;
+      navigateTo(state.activeView);
+    }
+
+    function setupCallStreamHandlers(callObj, remoteNumber) {
+      callObj.on('stream', (remoteStream) => {
+        simulateRingbackTone(false);
+        showActiveCallScreen();
+
+        const remoteVid = document.getElementById('remote-video');
+        const localVid = document.getElementById('local-video');
+
+        remoteVid.srcObject = remoteStream;
+        localVid.srcObject = localStream;
+
+        const audioIndicator = document.getElementById('audio-call-indicator');
+        const localVideoCont = document.getElementById('local-video-container');
+
+        if (state.isVideoCall) {
+          audioIndicator.classList.add('hidden');
+          localVideoCont.classList.remove('hidden');
+        } else {
+          audioIndicator.classList.remove('hidden');
+          localVideoCont.classList.add('hidden');
+        }
+      });
+
+      callObj.on('close', () => {
+        handleCallClosed(remoteNumber);
+      });
+
+      callObj.on('error', (err) => {
+        console.error("WebRTC pipeline crash:", err);
+        handleCallClosed(remoteNumber);
+      });
+    }
+
+    function showActiveCallScreen() {
+      showScreen('screen-active-call');
+      
+      callDurationSec = 0;
+      clearInterval(activeCallTimerId);
+      activeCallTimerId = setInterval(() => {
+        callDurationSec++;
+        const mins = Math.floor(callDurationSec / 60).toString().padStart(2, '0');
+        const secs = (callDurationSec % 60).toString().padStart(2, '0');
+        document.getElementById('active-call-timer').textContent = `Connected (${mins}:${secs})`;
+      }, 1000);
+    }
+
+    function hangUpCall() {
+      simulateRingbackTone(false);
+      simulateIncomingRingtone(false);
+
+      if (activeCallTimerId) {
+        clearInterval(activeCallTimerId);
+        activeCallTimerId = null;
+      }
+
+      const remoteNum = activeCall ? activeCall.peer.replace('peervo-', '') : null;
+      
+      if (activeCall) {
+        activeCall.close();
+      }
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+
+      if (remoteNum) {
+        const mins = Math.floor(callDurationSec / 60).toString().padStart(2, '0');
+        const secs = (callDurationSec % 60).toString().padStart(2, '0');
+        addLog('incoming', remoteNum, `${mins}:${secs}`);
+      }
+
+      activeCall = null;
+      navigateTo(state.activeView);
+    }
+
+    function handleCallClosed(remoteNumber) {
+      if (activeCallTimerId) {
+        clearInterval(activeCallTimerId);
+        activeCallTimerId = null;
+      }
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+
+      if (remoteNumber) {
+        const mins = Math.floor(callDurationSec / 60).toString().padStart(2, '0');
+        const secs = (callDurationSec % 60).toString().padStart(2, '0');
+        addLog('incoming', remoteNumber, `${mins}:${secs}`);
+      }
+
+      activeCall = null;
+      navigateTo(state.activeView);
+      showToast("Call Ended");
+    }
+
+    function toggleMuteMic() {
+      if (!localStream) return;
+      state.isMuted = !state.isMuted;
+      localStream.getAudioTracks().forEach(track => track.enabled = !state.isMuted);
+      
+      const btn = document.getElementById('btn-toggle-mic');
+      const icon = document.getElementById('icon-mic');
+      if (state.isMuted) {
+        btn.className = "w-14 h-14 rounded-full bg-red-600 border border-red-500 flex items-center justify-center text-white transition";
+        icon.setAttribute('data-lucide', 'mic-off');
+      } else {
+        btn.className = "w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white transition";
+        icon.setAttribute('data-lucide', 'mic');
+      }
+      lucide.createIcons();
+    }
+
+    function toggleMuteCamera() {
+      if (!localStream) return;
+      state.isCamDisabled = !state.isCamDisabled;
+      localStream.getVideoTracks().forEach(track => track.enabled = !state.isCamDisabled);
+
+      const btn = document.getElementById('btn-toggle-camera');
+      const icon = document.getElementById('icon-camera');
+      if (state.isCamDisabled) {
+        btn.className = "w-14 h-14 rounded-full bg-red-600 border border-red-500 flex items-center justify-center text-white transition";
+        icon.setAttribute('data-lucide', 'video-off');
+      } else {
+        btn.className = "w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white transition";
+        icon.setAttribute('data-lucide', 'video');
+      }
+      lucide.createIcons();
+    }
+
+    let ringbackIntervalId = null;
+    function simulateRingbackTone(start = true) {
+      if (!start) {
+        clearInterval(ringbackIntervalId);
+        return;
+      }
+      clearInterval(ringbackIntervalId);
+      ringbackIntervalId = setInterval(() => {
+        playTone(440, 480, 1.4);
+      }, 4000);
+      playTone(440, 480, 1.4);
+    }
+
+    let ringtoneIntervalId = null;
+    function simulateIncomingRingtone(start = true) {
+      if (!start) {
+        clearInterval(ringtoneIntervalId);
+        return;
+      }
+      clearInterval(ringtoneIntervalId);
+      ringtoneIntervalId = setInterval(() => {
+        playTone(400, 450, 0.4);
+        setTimeout(() => playTone(400, 450, 0.4), 600);
+      }, 3000);
+      
+      playTone(400, 450, 0.4);
+      setTimeout(() => playTone(400, 450, 0.4), 600);
+    }
+
+    function showScreen(screenId) {
+      const screens = ['screen-register', 'view-dialer', 'view-contacts', 'view-history', 'view-settings', 'screen-calling', 'screen-incoming', 'screen-active-call'];
+      screens.forEach(s => {
+        const el = document.getElementById(s);
+        if (el) {
+          if (s === screenId) {
+            el.classList.remove('hidden', 'hidden-view');
+          } else {
+            el.classList.add('hidden');
+          }
+        }
+      });
+      
+      // Clear out the tabbed layout views so overlays do not overlap active tabs
+      if (['screen-register', 'screen-calling', 'screen-incoming', 'screen-active-call'].includes(screenId)) {
+        const views = ['dialer', 'contacts', 'history', 'settings'];
+        views.forEach(v => {
+          const viewEl = document.getElementById(`view-${v}`);
+          if (viewEl) viewEl.classList.add('hidden-view');
+        });
+      }
+      lucide.createIcons();
+    }
+
+    function copyMyNumber() {
+      if (myPhoneNumber) {
+        const tempInput = document.createElement('input');
+        tempInput.value = myPhoneNumber;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        showToast("Line number copied.");
+      }
+    }
+
+    function loadNotificationOptionState() {
+      const toggle = document.getElementById('notification-toggle');
+      const isEnabled = localStorage.getItem('peervo_notifications_enabled') === 'true';
+      toggle.checked = isEnabled;
+      
+      if (isEnabled) {
+        registerServiceWorker();
+      }
+    }
+
+    function toggleNotifications(checkbox) {
+      if (checkbox.checked) {
+        Notification.requestPermission().then((permission) => {
+          if (permission === 'granted') {
+            localStorage.setItem('peervo_notifications_enabled', 'true');
+            registerServiceWorker();
+            showToast("Notifications registered.");
+          } else {
+            checkbox.checked = false;
+            localStorage.setItem('peervo_notifications_enabled', 'false');
+            showToast("Permission denied by system.");
+          }
+        });
+      } else {
+        localStorage.setItem('peervo_notifications_enabled', 'false');
+        unregisterServiceWorker();
+        showToast("Notifications disabled.");
+      }
+    }
+
+    function registerServiceWorker() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js')
+          .then((registration) => {
+            console.log('Service worker tracking active range:', registration.scope);
+          })
+          .catch((err) => {
+            console.warn('Notification SW registration failed:', err);
+          });
+      }
+    }
+
+    function unregisterServiceWorker() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (let registration of registrations) {
+            registration.unregister();
+          }
+        });
+      }
+    }
+
+    async function logoutNumber() {
+      const savedNum = localStorage.getItem('peervo_number');
+      if (isServerAvailable && savedNum && peer) {
+        try {
+          await fetch(`${REGISTRY_SERVER_URL}/api/deregister`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: savedNum, peerId: peer.id })
+          });
+        } catch (e) {
+          console.warn("Backend unregistration skipped.");
+        }
+      }
+      
+      localStorage.removeItem('peervo_number');
+      if (peer) {
+        peer.destroy();
+        peer = null;
+      }
+      
+      myPhoneNumber = "";
+      document.getElementById('connection-status').textContent = "Disconnected";
+      document.getElementById('status-indicator-dot').className = "w-2.5 h-2.5 rounded-full bg-slate-600";
+      
+      document.getElementById('nav-bottom-bar').classList.add('hidden');
+      showScreen('screen-register');
+      showToast("Line deregistered.");
+    }
+  </script>
+</body>
+</html>
