@@ -49,11 +49,7 @@
       user-select: none;
       -webkit-tap-highlight-color: transparent;
     }
-    /* Smooth transition for active tab content */
-    .tab-view {
-      transition: opacity 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
-    }
-    /* Hidden utility */
+    /* Hidden utility for non-active sub-tabs */
     .hidden-view {
       display: none !important;
     }
@@ -83,219 +79,250 @@
 
   <div id="app" class="w-full h-full flex flex-col justify-between bg-m3-background relative overflow-hidden">
     
-    <!-- Top System/App Bar -->
-    <header class="px-6 py-4 bg-m3-surface border-b border-slate-900/80 shrink-0">
-      <div class="flex items-center gap-3 max-w-7xl mx-auto w-full justify-between">
-        <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-2xl bg-m3-primaryContainer flex items-center justify-center shadow-lg shadow-purple-950/25">
-            <i data-lucide="phone" class="w-4.5 h-4.5 text-m3-primary"></i>
-          </div>
-          <div class="flex flex-col">
-            <span class="font-bold tracking-wide text-white text-base leading-none">PeerVo</span>
-            <span class="text-[9px] text-slate-500 font-medium tracking-widest uppercase mt-0.5">Secure P2P Voice & Video</span>
-          </div>
+    <!-- 1. CLAIM YOUR LINE REGISTRATION SCREEN -->
+    <div id="screen-register" class="hidden w-full h-full flex flex-col justify-center py-6 px-6 max-w-md mx-auto relative z-10">
+      <div class="text-center mb-8">
+        <div class="w-16 h-16 rounded-3xl bg-m3-primaryContainer flex items-center justify-center mx-auto mb-4 shadow-xl shadow-purple-950/40 border border-m3-primary/20">
+          <i data-lucide="phone-call" class="w-8 h-8 text-m3-primary"></i>
         </div>
-        <!-- Minimal status dot -->
-        <div class="flex items-center gap-2 px-3.5 py-1.5 bg-m3-surfaceVariant rounded-full text-[11px] font-medium border border-slate-800/40" id="status-chip">
-          <span class="w-2.5 h-2.5 rounded-full bg-amber-500" id="status-indicator-dot"></span>
-          <span id="connection-status" class="text-slate-300 font-medium">Connecting...</span>
-        </div>
+        <h1 class="text-3xl font-extrabold tracking-tight text-white mb-2">Claim Your Line</h1>
+        <p class="text-sm text-slate-400">Assign a personalized 10-digit number to launch high-fidelity secure P2P voice and video calls.</p>
       </div>
-    </header>
 
-    <!-- MAIN VIEWS CONTAINER -->
-    <main class="flex-1 overflow-y-auto px-6 py-4 flex flex-col relative w-full max-w-4xl mx-auto">
-      
-      <div id="screen-register" class="hidden flex-1 flex flex-col justify-center py-6 w-full max-w-md mx-auto">
-        <div class="text-center mb-8">
-          <h1 class="text-3xl font-extrabold tracking-tight text-white mb-2">Claim Your Line</h1>
-          <p class="text-sm text-slate-400">Assign a personalized 10-digit number to launch high-fidelity secure P2P voice and video calls.</p>
+      <div class="space-y-5 bg-m3-surfaceVariant p-6 rounded-3xl border border-slate-800/60 shadow-xl">
+        <div>
+          <label class="block text-xs font-semibold text-m3-primary mb-2 uppercase tracking-wider">Desired Phone Number</label>
+          <div class="relative">
+            <input type="text" id="reg-phone" maxlength="10" placeholder="e.g. 2125550199" 
+                   class="w-full px-4 py-4 bg-m3-surface rounded-2xl border border-slate-700/60 text-center tracking-[0.15em] font-mono text-xl text-white focus:outline-none focus:ring-2 focus:ring-m3-primary transition">
+            <button onclick="generateRandomNumber()" class="absolute right-4 top-4 text-m3-primary hover:text-white p-1" title="Generate Random">
+              <i data-lucide="shuffle" class="w-5 h-5"></i>
+            </button>
+          </div>
         </div>
 
-        <div class="space-y-5 bg-m3-surfaceVariant p-6 rounded-3xl border border-slate-800/60 shadow-xl">
-          <div>
-            <label class="block text-xs font-semibold text-m3-primary mb-2 uppercase tracking-wider">Desired Phone Number</label>
-            <div class="relative">
-              <input type="text" id="reg-phone" maxlength="10" placeholder="e.g. 2125550199" 
-                     class="w-full px-4 py-4 bg-m3-surface rounded-2xl border border-slate-700/60 text-center tracking-[0.15em] font-mono text-xl text-white focus:outline-none focus:ring-2 focus:ring-m3-primary transition">
-              <button onclick="generateRandomNumber()" class="absolute right-4 top-4 text-m3-primary hover:text-white p-1" title="Generate Random">
-                <i data-lucide="shuffle" class="w-5 h-5"></i>
+        <button onclick="registerPeerVoNumber()" id="btn-register" class="w-full py-4 bg-m3-primaryContainer hover:bg-opacity-95 active:scale-95 transition-all rounded-2xl font-bold flex items-center justify-center gap-2 text-m3-onPrimaryContainer shadow-md">
+          <span>Register Line</span>
+          <i data-lucide="chevron-right" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- 2. MAIN ACTIVE APP PORTAL CONTAINER -->
+    <div id="screen-app" class="hidden w-full h-full flex flex-col justify-between relative overflow-hidden">
+      <!-- Top System/App Bar -->
+      <header class="px-6 py-4 bg-m3-surface border-b border-slate-900/80 shrink-0">
+        <div class="flex items-center gap-3 max-w-7xl mx-auto w-full justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-2xl bg-m3-primaryContainer flex items-center justify-center shadow-lg shadow-purple-950/25">
+              <i data-lucide="phone" class="w-4.5 h-4.5 text-m3-primary"></i>
+            </div>
+            <div class="flex flex-col">
+              <span class="font-bold tracking-wide text-white text-base leading-none">PeerVo</span>
+              <span class="text-[9px] text-slate-500 font-medium tracking-widest uppercase mt-0.5">Secure P2P Voice & Video</span>
+            </div>
+          </div>
+          <!-- Minimal status dot -->
+          <div class="flex items-center gap-2 px-3.5 py-1.5 bg-m3-surfaceVariant rounded-full text-[11px] font-medium border border-slate-800/40" id="status-chip">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500" id="status-indicator-dot"></span>
+            <span id="connection-status" class="text-slate-300 font-medium">Connecting...</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Sub-Tab Views Router -->
+      <main class="flex-1 overflow-y-auto px-6 py-4 flex flex-col relative w-full max-w-4xl mx-auto">
+        
+        <!-- Dialer tab -->
+        <div id="view-dialer" class="tab-view flex-1 flex flex-col justify-between hidden-view max-w-md mx-auto w-full">
+          <div class="text-center relative py-6">
+            <input type="text" id="dial-number" readonly placeholder="Enter Number" 
+                   class="w-full bg-transparent text-center font-mono text-4xl font-semibold tracking-widest text-white placeholder-slate-800 focus:outline-none">
+            <button onclick="dialerBackspace()" class="absolute right-2 top-8 p-1.5 text-slate-400 hover:text-white rounded-full hover:bg-m3-surfaceVariant transition">
+              <i data-lucide="delete" class="w-6 h-6"></i>
+            </button>
+          </div>
+
+          <!-- Keypad Grid -->
+          <div class="grid grid-cols-3 gap-y-4 gap-x-8 max-w-[280px] mx-auto mb-6">
+            <button onclick="pressKey('1')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">1</span>
+              <span class="text-[9px] text-slate-400">o_o</span>
+            </button>
+            <button onclick="pressKey('2')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">2</span>
+              <span class="text-[9px] text-slate-400">ABC</span>
+            </button>
+            <button onclick="pressKey('3')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">3</span>
+              <span class="text-[9px] text-slate-400">DEF</span>
+            </button>
+
+            <button onclick="pressKey('4')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">4</span>
+              <span class="text-[9px] text-slate-400">GHI</span>
+            </button>
+            <button onclick="pressKey('5')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">5</span>
+              <span class="text-[9px] text-slate-400">JKL</span>
+            </button>
+            <button onclick="pressKey('6')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">6</span>
+              <span class="text-[9px] text-slate-400">MNO</span>
+            </button>
+
+            <button onclick="pressKey('7')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">7</span>
+              <span class="text-[9px] text-slate-400">PQRS</span>
+            </button>
+            <button onclick="pressKey('8')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">8</span>
+              <span class="text-[9px] text-slate-400">TUV</span>
+            </button>
+            <button onclick="pressKey('9')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">9</span>
+              <span class="text-[9px] text-slate-400">WXYZ</span>
+            </button>
+
+            <button onclick="pressKey('*')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">*</span>
+            </button>
+            <button onclick="pressKey('0')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">0</span>
+              <span class="text-[9px] text-slate-400">+</span>
+            </button>
+            <button onclick="pressKey('#')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex items-center justify-center transition">
+              <span class="text-2xl font-semibold text-white">#</span>
+            </button>
+          </div>
+
+          <!-- Calling Control Actions -->
+          <div class="flex justify-center gap-6 mt-2 mb-4">
+            <!-- Voice Call -->
+            <button onclick="startOutgoingCall(false)" class="w-16 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white flex items-center justify-center shadow-lg transition animate-none">
+              <i data-lucide="phone" class="w-7 h-7"></i>
+            </button>
+            <!-- Video Call -->
+            <button onclick="startOutgoingCall(true)" class="w-16 h-16 rounded-2xl bg-m3-primaryContainer text-m3-onPrimaryContainer hover:opacity-95 active:scale-95 flex items-center justify-center shadow-lg transition">
+              <i data-lucide="video" class="w-7 h-7"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Contacts tab -->
+        <div id="view-contacts" class="tab-view flex-1 flex flex-col justify-start hidden-view w-full">
+          <div class="bg-m3-surfaceVariant p-5 rounded-3xl border border-slate-800/50 mb-6 mt-2">
+            <h3 class="text-xs font-bold text-m3-primary mb-3.5 uppercase tracking-wider flex items-center gap-2">
+              <i data-lucide="user-plus" class="w-4 h-4"></i> Create Contact
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3.5">
+              <input type="text" id="contact-name" placeholder="Contact Name" class="px-4 py-3 bg-m3-surface rounded-xl text-sm border border-slate-700/60 focus:outline-none focus:ring-1 focus:ring-m3-primary text-white">
+              <input type="text" id="contact-phone" maxlength="10" placeholder="10 digits number" class="px-4 py-3 bg-m3-surface rounded-xl text-sm border border-slate-700/60 font-mono focus:outline-none focus:ring-1 focus:ring-m3-primary text-white">
+            </div>
+            <button onclick="saveContact()" class="w-full py-3 bg-m3-primaryContainer text-m3-onPrimaryContainer hover:opacity-95 text-sm font-bold rounded-xl transition shadow-md">
+              Save to Contacts
+            </button>
+          </div>
+
+          <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3 px-1">Saved Directories</h3>
+          <div class="flex-1 overflow-y-auto space-y-2.5 max-h-[460px] pr-1" id="contacts-list"></div>
+        </div>
+
+        <!-- Call logs tab -->
+        <div id="view-history" class="tab-view flex-1 flex flex-col justify-start hidden-view w-full">
+          <div class="flex justify-between items-center mb-4 mt-2 px-1">
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Call Logs</h3>
+            <button onclick="clearCallHistory()" class="text-xs font-bold text-red-400 hover:text-red-300 transition">Clear Logs</button>
+          </div>
+          <div class="flex-1 overflow-y-auto space-y-2.5 max-h-[560px] pr-1" id="logs-list"></div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="view-settings" class="tab-view flex-1 flex flex-col justify-start hidden-view space-y-6 w-full">
+          <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-2">Settings & Identity</h3>
+          
+          <div class="bg-m3-surfaceVariant p-6 rounded-3xl border border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <p class="text-[10px] text-m3-primary uppercase font-bold tracking-widest">Active PeerVo Number</p>
+              <h2 id="settings-number" class="text-3xl font-bold font-mono tracking-wider text-white mt-1">--- --- ----</h2>
+            </div>
+            <div class="flex gap-2 w-full md:w-auto shrink-0">
+              <button onclick="copyMyNumber()" class="flex-1 md:flex-initial px-5 py-3 rounded-xl bg-m3-surface hover:bg-slate-800 text-slate-200 transition text-sm font-medium flex items-center justify-center gap-2 border border-slate-800/60">
+                <i data-lucide="copy" class="w-4 h-4"></i> Copy Line
+              </button>
+              <button onclick="logoutNumber()" class="px-5 py-3 rounded-xl bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 text-red-400 transition text-sm font-medium flex items-center justify-center gap-1.5">
+                <i data-lucide="log-out" class="w-4 h-4"></i> Deregister
               </button>
             </div>
           </div>
 
-          <button onclick="registerPeerVoNumber()" id="btn-register" class="w-full py-4 bg-m3-primaryContainer hover:bg-opacity-95 active:scale-95 transition-all rounded-2xl font-bold flex items-center justify-center gap-2 text-m3-onPrimaryContainer shadow-md">
-            <span>Register Line</span>
-            <i data-lucide="chevron-right" class="w-5 h-5"></i>
-          </button>
-        </div>
-      </div>
-
-      <div id="view-dialer" class="tab-view flex-1 flex flex-col justify-between hidden-view max-w-md mx-auto w-full">
-        <div class="text-center relative py-6">
-          <input type="text" id="dial-number" readonly placeholder="Enter Number" 
-                 class="w-full bg-transparent text-center font-mono text-4xl font-semibold tracking-widest text-white placeholder-slate-800 focus:outline-none">
-          <button onclick="dialerBackspace()" class="absolute right-2 top-8 p-1.5 text-slate-400 hover:text-white rounded-full hover:bg-m3-surfaceVariant transition">
-            <i data-lucide="delete" class="w-6 h-6"></i>
-          </button>
-        </div>
-
-        <!-- Keypad Grid -->
-        <div class="grid grid-cols-3 gap-y-4 gap-x-8 max-w-[280px] mx-auto mb-6">
-          <button onclick="pressKey('1')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">1</span>
-            <span class="text-[9px] text-slate-400">o_o</span>
-          </button>
-          <button onclick="pressKey('2')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">2</span>
-            <span class="text-[9px] text-slate-400">ABC</span>
-          </button>
-          <button onclick="pressKey('3')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">3</span>
-            <span class="text-[9px] text-slate-400">DEF</span>
-          </button>
-
-          <button onclick="pressKey('4')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">4</span>
-            <span class="text-[9px] text-slate-400">GHI</span>
-          </button>
-          <button onclick="pressKey('5')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">5</span>
-            <span class="text-[9px] text-slate-400">JKL</span>
-          </button>
-          <button onclick="pressKey('6')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">6</span>
-            <span class="text-[9px] text-slate-400">MNO</span>
-          </button>
-
-          <button onclick="pressKey('7')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">7</span>
-            <span class="text-[9px] text-slate-400">PQRS</span>
-          </button>
-          <button onclick="pressKey('8')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">8</span>
-            <span class="text-[9px] text-slate-400">TUV</span>
-          </button>
-          <button onclick="pressKey('9')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">9</span>
-            <span class="text-[9px] text-slate-400">WXYZ</span>
-          </button>
-
-          <button onclick="pressKey('*')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">*</span>
-          </button>
-          <button onclick="pressKey('0')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex flex-col items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">0</span>
-            <span class="text-[9px] text-slate-400">+</span>
-          </button>
-          <button onclick="pressKey('#')" class="w-16 h-16 rounded-full bg-m3-surfaceVariant hover:bg-m3-secondaryContainer active:scale-90 flex items-center justify-center transition">
-            <span class="text-2xl font-semibold text-white">#</span>
-          </button>
-        </div>
-
-        <!-- Calling Control Actions -->
-        <div class="flex justify-center gap-6 mt-2 mb-4">
-          <!-- Voice Call -->
-          <button onclick="startOutgoingCall(false)" class="w-16 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white flex items-center justify-center shadow-lg transition">
-            <i data-lucide="phone" class="w-7 h-7"></i>
-          </button>
-          <!-- Video Call -->
-          <button onclick="startOutgoingCall(true)" class="w-16 h-16 rounded-2xl bg-m3-primaryContainer text-m3-onPrimaryContainer hover:opacity-95 active:scale-95 flex items-center justify-center shadow-lg transition">
-            <i data-lucide="video" class="w-7 h-7"></i>
-          </button>
-        </div>
-      </div>
-
-      <div id="view-contacts" class="tab-view flex-1 flex flex-col justify-start hidden-view w-full">
-        <!-- Add Contact Mini Form -->
-        <div class="bg-m3-surfaceVariant p-5 rounded-3xl border border-slate-800/50 mb-6 mt-2">
-          <h3 class="text-xs font-bold text-m3-primary mb-3.5 uppercase tracking-wider flex items-center gap-2">
-            <i data-lucide="user-plus" class="w-4 h-4"></i> Create Contact
-          </h3>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3.5">
-            <input type="text" id="contact-name" placeholder="Contact Name" class="px-4 py-3 bg-m3-surface rounded-xl text-sm border border-slate-700/60 focus:outline-none focus:ring-1 focus:ring-m3-primary text-white">
-            <input type="text" id="contact-phone" maxlength="10" placeholder="10 digits number" class="px-4 py-3 bg-m3-surface rounded-xl text-sm border border-slate-700/60 font-mono focus:outline-none focus:ring-1 focus:ring-m3-primary text-white">
-          </div>
-          <button onclick="saveContact()" class="w-full py-3 bg-m3-primaryContainer text-m3-onPrimaryContainer hover:opacity-95 text-sm font-bold rounded-xl transition shadow-md">
-            Save to Contacts
-          </button>
-        </div>
-
-        <!-- List Container -->
-        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3 px-1">Saved Directories</h3>
-        <div class="flex-1 overflow-y-auto space-y-2.5 max-h-[460px] pr-1" id="contacts-list">
-          <!-- Dynamic items -->
-        </div>
-      </div>
-
-      <div id="view-history" class="tab-view flex-1 flex flex-col justify-start hidden-view w-full">
-        <div class="flex justify-between items-center mb-4 mt-2 px-1">
-          <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Call Logs</h3>
-          <button onclick="clearCallHistory()" class="text-xs font-bold text-red-400 hover:text-red-300 transition">Clear Logs</button>
-        </div>
-        <div class="flex-1 overflow-y-auto space-y-2.5 max-h-[560px] pr-1" id="logs-list">
-          <!-- Dynamic items -->
-        </div>
-      </div>
-
-      <div id="view-settings" class="tab-view flex-1 flex flex-col justify-start hidden-view space-y-6 w-full">
-        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-2">Settings & Identity</h3>
-        
-        <!-- Active Profile Card -->
-        <div class="bg-m3-surfaceVariant p-6 rounded-3xl border border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <p class="text-[10px] text-m3-primary uppercase font-bold tracking-widest">Active PeerVo Number</p>
-            <h2 id="settings-number" class="text-3xl font-bold font-mono tracking-wider text-white mt-1">--- --- ----</h2>
-          </div>
-          <div class="flex gap-2 w-full md:w-auto shrink-0">
-            <button onclick="copyMyNumber()" class="flex-1 md:flex-initial px-5 py-3 rounded-xl bg-m3-surface hover:bg-slate-800 text-slate-200 transition text-sm font-medium flex items-center justify-center gap-2 border border-slate-800/60">
-              <i data-lucide="copy" class="w-4 h-4"></i> Copy Line
-            </button>
-            <button onclick="logoutNumber()" class="px-5 py-3 rounded-xl bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 text-red-400 transition text-sm font-medium flex items-center justify-center gap-1.5">
-              <i data-lucide="log-out" class="w-4 h-4"></i> Deregister
-            </button>
-          </div>
-        </div>
-
-        <!-- Settings Options (Material 3 Card List) -->
-        <div class="bg-m3-surfaceVariant rounded-3xl overflow-hidden border border-slate-800/60 divide-y divide-slate-800">
-          
-          <!-- Notification Option -->
-          <div class="p-5 flex items-center justify-between">
-            <div class="flex items-center gap-4">
-              <div class="p-3 bg-m3-surface rounded-2xl text-m3-primary shadow-inner">
-                <i data-lucide="bell" class="w-5 h-5"></i>
+          <div class="bg-m3-surfaceVariant rounded-3xl overflow-hidden border border-slate-800/60 divide-y divide-slate-800">
+            
+            <!-- Notifications Toggle -->
+            <div class="p-5 flex items-center justify-between">
+              <div class="flex items-center gap-4">
+                <div class="p-3 bg-m3-surface rounded-2xl text-m3-primary shadow-inner">
+                  <i data-lucide="bell" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <p class="font-semibold text-sm text-white">Notifications</p>
+                  <p class="text-xs text-slate-400">Enable OS-level wake calls while tab is closed</p>
+                </div>
               </div>
               <div>
-                <p class="font-semibold text-sm text-white">Notifications</p>
-                <p class="text-xs text-slate-400">Keep line active & enable background alerts</p>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="notification-toggle" onchange="toggleNotifications(this)" class="sr-only peer">
+                  <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-m3-primary"></div>
+                </label>
               </div>
             </div>
-            <div>
-              <!-- Slide Switch for Service Worker/Notifications -->
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="notification-toggle" onchange="toggleNotifications(this)" class="sr-only peer">
-                <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-m3-primary"></div>
-              </label>
-            </div>
-          </div>
 
-          <!-- Connection Route Info -->
-          <div class="p-5 flex items-center gap-4">
-            <div class="p-3 bg-m3-surface rounded-2xl text-m3-primary shadow-inner">
-              <i data-lucide="globe" class="w-5 h-5"></i>
-            </div>
-            <div>
-              <p class="font-semibold text-sm text-white">Connection Route</p>
-              <p id="route-indicator" class="text-xs font-mono text-slate-400">Direct Local P2P Namespace</p>
+            <!-- Signaling Indicator -->
+            <div class="p-5 flex items-center gap-4">
+              <div class="p-3 bg-m3-surface rounded-2xl text-m3-primary shadow-inner">
+                <i data-lucide="globe" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <p class="font-semibold text-sm text-white">Connection Route</p>
+                <p id="route-indicator" class="text-xs font-mono text-slate-400">Loading Broker Routing Network...</p>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-    </main>
+      </main>
 
-    <!-- Outgoing Call Overlay -->
+      <nav id="nav-bottom-bar" class="bg-m3-surface py-3 border-t border-slate-900/85 shrink-0">
+        <div class="grid grid-cols-4 text-center max-w-md mx-auto w-full px-2">
+          <button onclick="navigateTo('dialer')" id="nav-dialer" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
+            <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
+              <i data-lucide="phone" class="w-5 h-5"></i>
+            </div>
+            <span class="font-medium mt-0.5 text-[10px]">Dialer</span>
+          </button>
+          <button onclick="navigateTo('contacts')" id="nav-contacts" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
+            <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
+              <i data-lucide="users" class="w-5 h-5"></i>
+            </div>
+            <span class="font-medium mt-0.5 text-[10px]">Contacts</span>
+          </button>
+          <button onclick="navigateTo('history')" id="nav-history" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
+            <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
+              <i data-lucide="clock" class="w-5 h-5"></i>
+            </div>
+            <span class="font-medium mt-0.5 text-[10px]">Logs</span>
+          </button>
+          <button onclick="navigateTo('settings')" id="nav-settings" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
+            <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
+              <i data-lucide="settings" class="w-5 h-5"></i>
+            </div>
+            <span class="font-medium mt-0.5 text-[10px]">Settings</span>
+          </button>
+        </div>
+      </nav>
+    </div>
+
+    <!-- 3. OUTGOING RINGING SCREEN OVERLAY -->
     <div id="screen-calling" class="hidden absolute inset-0 bg-m3-surface flex flex-col justify-between items-center px-6 py-16 z-40">
       <div class="text-center mt-12 max-w-md mx-auto">
         <div class="relative w-32 h-32 mx-auto mb-8 flex items-center justify-center">
@@ -317,7 +344,7 @@
       </div>
     </div>
 
-    <!-- Incoming Call Overlay -->
+    <!-- 4. INCOMING RINGING SCREEN OVERLAY -->
     <div id="screen-incoming" class="hidden absolute inset-0 bg-m3-surface flex flex-col justify-between items-center px-6 py-16 z-40">
       <div class="text-center mt-12 max-w-md mx-auto">
         <div class="relative w-32 h-32 mx-auto mb-8 flex items-center justify-center">
@@ -342,15 +369,12 @@
       </div>
     </div>
 
-    <!-- Active Call Screen Overlay -->
+    <!-- 5. STREAM PIPELINE AND CONTROLS ACTIVE CELL OVERLAY -->
     <div id="screen-active-call" class="hidden absolute inset-0 bg-black flex flex-col justify-between z-40">
-      <!-- Media Stream Trackers -->
       <div class="absolute inset-0 flex flex-col justify-center items-center bg-zinc-950">
-        <!-- Remote Video -->
         <div class="relative w-full h-full flex items-center justify-center">
           <video id="remote-video" class="w-full h-full object-cover" autoplay playsinline></video>
           
-          <!-- Minimal Audio Indicator if video is not currently transmitting -->
           <div id="audio-call-indicator" class="absolute inset-0 flex flex-col justify-center items-center bg-zinc-900/95">
             <div class="w-24 h-24 rounded-full bg-m3-primaryContainer flex items-center justify-center animate-pulse mb-4">
               <i data-lucide="mic" class="w-10 h-10 text-m3-primary"></i>
@@ -359,13 +383,11 @@
           </div>
         </div>
 
-        <!-- Local Picture in Picture Frame -->
         <div id="local-video-container" class="absolute top-6 right-6 w-28 sm:w-36 h-40 sm:h-52 rounded-2xl border border-slate-700/80 overflow-hidden shadow-2xl bg-slate-900 transition-all z-50">
           <video id="local-video" class="w-full h-full object-cover transform -scale-x-100" autoplay playsinline muted></video>
         </div>
       </div>
 
-      <!-- Floating top state tag -->
       <div class="absolute top-6 left-6 flex justify-between items-center z-50">
         <div class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
@@ -373,56 +395,20 @@
         </div>
       </div>
 
-      <!-- Overlaid Calling controls -->
       <div class="absolute bottom-10 left-0 right-0 px-6 flex justify-center items-center gap-4 z-50 max-w-md mx-auto w-full">
-        <!-- Mute Mic -->
         <button id="btn-toggle-mic" onclick="toggleMuteMic()" class="w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white transition active:scale-90">
           <i data-lucide="mic" id="icon-mic" class="w-5.5 h-5.5"></i>
         </button>
-        <!-- Hangup (Red Pill) -->
         <button onclick="hangUpCall()" class="w-24 h-16 rounded-[2rem] bg-red-600 hover:bg-red-500 flex items-center justify-center text-white shadow-xl transition active:scale-90">
           <i data-lucide="phone-off" class="w-6 h-6"></i>
         </button>
-        <!-- Toggle Camera -->
         <button id="btn-toggle-camera" onclick="toggleMuteCamera()" class="w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white transition active:scale-90">
           <i data-lucide="video" id="icon-camera" class="w-5.5 h-5.5"></i>
         </button>
       </div>
     </div>
 
-    <nav id="nav-bottom-bar" class="bg-m3-surface py-3 border-t border-slate-900/85 shrink-0 hidden">
-      <div class="grid grid-cols-4 text-center max-w-md mx-auto w-full px-2">
-        <!-- Tab: Dialer -->
-        <button onclick="navigateTo('dialer')" id="nav-dialer" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
-          <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
-            <i data-lucide="phone" class="w-5 h-5"></i>
-          </div>
-          <span class="font-medium mt-0.5 text-[10px]">Dialer</span>
-        </button>
-        <!-- Tab: Contacts -->
-        <button onclick="navigateTo('contacts')" id="nav-contacts" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
-          <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
-            <i data-lucide="users" class="w-5 h-5"></i>
-          </div>
-          <span class="font-medium mt-0.5 text-[10px]">Contacts</span>
-        </button>
-        <!-- Tab: Logs -->
-        <button onclick="navigateTo('history')" id="nav-history" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
-          <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
-            <i data-lucide="clock" class="w-5 h-5"></i>
-          </div>
-          <span class="font-medium mt-0.5 text-[10px]">Logs</span>
-        </button>
-        <!-- Tab: Settings -->
-        <button onclick="navigateTo('settings')" id="nav-settings" class="flex flex-col items-center gap-1 group py-1 text-xs text-slate-400">
-          <div class="nav-pill px-5 py-1.5 rounded-full transition-all group-active:scale-95 flex items-center justify-center">
-            <i data-lucide="settings" class="w-5 h-5"></i>
-          </div>
-          <span class="font-medium mt-0.5 text-[10px]">Settings</span>
-        </button>
-      </div>
-    </nav>
-
+    <!-- TOAST ALERTS BANNER -->
     <div id="toast-banner" class="absolute bottom-24 left-6 right-6 md:left-auto md:right-6 md:w-96 bg-m3-surfaceVariant border border-slate-800 text-white px-5 py-4 rounded-2xl text-xs hidden flex items-center justify-between shadow-2xl z-50 transition transform translate-y-2 opacity-0">
       <span id="toast-message" class="font-medium">Notification Alert</span>
       <button onclick="hideToast()" class="p-1 rounded hover:bg-slate-800 text-slate-400 transition">
@@ -433,7 +419,7 @@
   </div>
 
   <script>
-    const REGISTRY_SERVER_URL = "http://localhost:5000";
+    const REGISTRY_SERVER_URL = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1') ? "http://localhost:5000" : window.location.origin;
     let peer = null;
     let localStream = null;
     let activeCall = null;
@@ -450,10 +436,10 @@
       activeView: 'dialer'
     };
 
-    // Parse data layers
     let contacts = JSON.parse(localStorage.getItem('peervo_contacts')) || [];
     let callLogs = JSON.parse(localStorage.getItem('peervo_logs')) || [];
 
+    // On load sequence initialization
     window.addEventListener('load', () => {
       lucide.createIcons();
       checkServerHealth();
@@ -461,6 +447,8 @@
       loadStoredSession();
       renderContacts();
       renderLogs();
+      setupServiceWorkerMessageHandler();
+      checkForDeepLinkedCall();
     });
 
     async function checkServerHealth() {
@@ -469,7 +457,7 @@
       const routeIndicator = document.getElementById('route-indicator');
 
       try {
-        const response = await fetch(`${REGISTRY_SERVER_URL}/api/status`, { signal: AbortSignal.timeout(1500) });
+        const response = await fetch(`${REGISTRY_SERVER_URL}/api/status`, { signal: AbortSignal.timeout(2000) });
         if (response.ok) {
           isServerAvailable = true;
           routeIndicator.textContent = "Registry directory routing online";
@@ -478,7 +466,7 @@
         }
       } catch (err) {
         isServerAvailable = false;
-        routeIndicator.textContent = "Direct Peer-ID Namespace Mapping";
+        routeIndicator.textContent = "Direct Peer-ID Namespace Mapping (Server Offline)";
       }
     }
 
@@ -492,7 +480,7 @@
         toast.classList.remove('translate-y-2', 'opacity-0');
       }, 50);
       
-      setTimeout(() => { hideToast(); }, 4000);
+      setTimeout(() => { hideToast(); }, 5000);
     }
 
     function hideToast() {
@@ -502,6 +490,56 @@
       setTimeout(() => { toast.classList.add('hidden'); }, 300);
     }
 
+    // Top-Level Screens controller
+    function showScreen(screenId) {
+      const screens = ['screen-register', 'screen-app', 'screen-calling', 'screen-incoming', 'screen-active-call'];
+      screens.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          if (id === screenId) {
+            el.classList.remove('hidden');
+          } else {
+            el.classList.add('hidden');
+          }
+        }
+      });
+      lucide.createIcons();
+    }
+
+    // Sub-Tab Navigation inside screen-app
+    function navigateTo(viewId) {
+      state.activeView = viewId;
+      showScreen('screen-app');
+
+      const views = ['dialer', 'contacts', 'history', 'settings'];
+      views.forEach(v => {
+        const viewEl = document.getElementById(`view-${v}`);
+        const navBtn = document.getElementById(`nav-${v}`);
+        
+        if (v === viewId) {
+          viewEl.classList.remove('hidden-view');
+          navBtn.classList.remove('text-slate-400');
+          navBtn.classList.add('text-m3-primary');
+          
+          const pill = navBtn.querySelector('.nav-pill');
+          if (pill) {
+            pill.classList.add('bg-m3-secondaryContainer', 'text-m3-onSecondaryContainer');
+          }
+        } else {
+          viewEl.classList.add('hidden-view');
+          navBtn.classList.remove('text-m3-primary');
+          navBtn.classList.add('text-slate-400');
+          
+          const pill = navBtn.querySelector('.nav-pill');
+          if (pill) {
+            pill.classList.remove('bg-m3-secondaryContainer', 'text-m3-onSecondaryContainer');
+          }
+        }
+      });
+      lucide.createIcons();
+    }
+
+    // Load active session from local storage
     function loadStoredSession() {
       const savedNum = localStorage.getItem('peervo_number');
       if (savedNum && savedNum.length === 10) {
@@ -509,7 +547,6 @@
         initiatePeerJS(savedNum);
       } else {
         showScreen('screen-register');
-        document.getElementById('nav-bottom-bar').classList.add('hidden');
       }
     }
 
@@ -541,8 +578,12 @@
       const statusText = document.getElementById('connection-status');
       const dot = document.getElementById('status-indicator-dot');
 
-      statusText.textContent = "Connecting...";
+      statusText.textContent = "Connecting Broker...";
       dot.className = "w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
+
+      if (peer) {
+        peer.destroy();
+      }
 
       peer = new Peer(`peervo-${phoneNumber}`);
 
@@ -564,8 +605,18 @@
           }
         }
 
-        document.getElementById('nav-bottom-bar').classList.remove('hidden');
-        navigateTo('dialer');
+        navigateTo(state.activeView);
+        
+        // Reconfigure Web Push if the setting was previously enabled
+        if (localStorage.getItem('peervo_notifications_enabled') === 'true') {
+          configurePushNotifications();
+        }
+      });
+
+      peer.on('disconnected', () => {
+        statusText.textContent = "Reconnecting...";
+        dot.className = "w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
+        peer.reconnect();
       });
 
       peer.on('error', (err) => {
@@ -586,14 +637,6 @@
         state.isVideoCall = isVideoIncoming;
 
         showIncomingCallScreen(callerID, isVideoIncoming);
-        
-        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({
-            type: 'INCOMING_CALL',
-            caller: callerID,
-            isVideo: isVideoIncoming
-          });
-        }
       });
     }
 
@@ -660,46 +703,7 @@
       dialInput.value = dialInput.value.slice(0, -1);
     }
 
-    function navigateTo(viewId) {
-      state.activeView = viewId;
-      
-      // CRITICAL: Ensure the register screen and any overlay call interfaces are hidden on standard view switches
-      document.getElementById('screen-register').classList.add('hidden');
-      document.getElementById('screen-calling').classList.add('hidden');
-      document.getElementById('screen-incoming').classList.add('hidden');
-      document.getElementById('screen-active-call').classList.add('hidden');
-      
-      // Ensure the bottom nav bar remains visible
-      document.getElementById('nav-bottom-bar').classList.remove('hidden');
-
-      const views = ['dialer', 'contacts', 'history', 'settings'];
-      views.forEach(v => {
-        const viewEl = document.getElementById(`view-${v}`);
-        const navBtn = document.getElementById(`nav-${v}`);
-        
-        if (v === viewId) {
-          viewEl.classList.remove('hidden-view');
-          navBtn.classList.remove('text-slate-400');
-          navBtn.classList.add('text-m3-primary');
-          
-          const pill = navBtn.querySelector('.nav-pill');
-          if (pill) {
-            pill.classList.add('bg-m3-secondaryContainer', 'text-m3-onSecondaryContainer');
-          }
-        } else {
-          viewEl.classList.add('hidden-view');
-          navBtn.classList.remove('text-m3-primary');
-          navBtn.classList.add('text-slate-400');
-          
-          const pill = navBtn.querySelector('.nav-pill');
-          if (pill) {
-            pill.classList.remove('bg-m3-secondaryContainer', 'text-m3-onSecondaryContainer');
-          }
-        }
-      });
-      lucide.createIcons();
-    }
-
+    // Contacts CRUD System
     function saveContact() {
       const name = document.getElementById('contact-name').value.trim();
       const phone = document.getElementById('contact-phone').value.trim();
@@ -760,6 +764,7 @@
       startOutgoingCall(isVideo);
     }
 
+    // Call Logger system
     function addLog(type, phone, durationText = "") {
       const contact = contacts.find(c => c.phone === phone);
       const name = contact ? contact.name : "Direct Dial";
@@ -845,6 +850,13 @@
 
       if (isServerAvailable) {
         try {
+          // Fire a server push request first in case the target tab is closed
+          fetch(`${REGISTRY_SERVER_URL}/api/call-alert`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ caller: myPhoneNumber, callee: targetPhone, video: isVideo })
+          }).catch(e => console.warn("Background Push notify call rejected: ", e));
+
           const resp = await fetch(`${REGISTRY_SERVER_URL}/api/lookup/${targetPhone}`);
           if (resp.status === 200) {
             const data = await resp.json();
@@ -1024,6 +1036,7 @@
       showToast("Call Ended");
     }
 
+    // Mute/Unmute hardware stream tracks
     function toggleMuteMic() {
       if (!localStream) return;
       state.isMuted = !state.isMuted;
@@ -1058,6 +1071,7 @@
       lucide.createIcons();
     }
 
+    // Audio Ringers & DTMF Loops
     let ringbackIntervalId = null;
     function simulateRingbackTone(start = true) {
       if (!start) {
@@ -1087,30 +1101,6 @@
       setTimeout(() => playTone(400, 450, 0.4), 600);
     }
 
-    function showScreen(screenId) {
-      const screens = ['screen-register', 'view-dialer', 'view-contacts', 'view-history', 'view-settings', 'screen-calling', 'screen-incoming', 'screen-active-call'];
-      screens.forEach(s => {
-        const el = document.getElementById(s);
-        if (el) {
-          if (s === screenId) {
-            el.classList.remove('hidden', 'hidden-view');
-          } else {
-            el.classList.add('hidden');
-          }
-        }
-      });
-      
-      // Clear out the tabbed layout views so overlays do not overlap active tabs
-      if (['screen-register', 'screen-calling', 'screen-incoming', 'screen-active-call'].includes(screenId)) {
-        const views = ['dialer', 'contacts', 'history', 'settings'];
-        views.forEach(v => {
-          const viewEl = document.getElementById(`view-${v}`);
-          if (viewEl) viewEl.classList.add('hidden-view');
-        });
-      }
-      lucide.createIcons();
-    }
-
     function copyMyNumber() {
       if (myPhoneNumber) {
         const tempInput = document.createElement('input');
@@ -1138,12 +1128,13 @@
         Notification.requestPermission().then((permission) => {
           if (permission === 'granted') {
             localStorage.setItem('peervo_notifications_enabled', 'true');
-            registerServiceWorker();
-            showToast("Notifications registered.");
+            registerServiceWorker().then(() => {
+              configurePushNotifications();
+            });
           } else {
             checkbox.checked = false;
             localStorage.setItem('peervo_notifications_enabled', 'false');
-            showToast("Permission denied by system.");
+            showToast("OS Notification permission was denied.");
           }
         });
       } else {
@@ -1155,14 +1146,16 @@
 
     function registerServiceWorker() {
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js')
+        return navigator.serviceWorker.register('./sw.js')
           .then((registration) => {
             console.log('Service worker tracking active range:', registration.scope);
+            return registration;
           })
           .catch((err) => {
             console.warn('Notification SW registration failed:', err);
           });
       }
+      return Promise.reject("Service Workers not supported in this browser.");
     }
 
     function unregisterServiceWorker() {
@@ -1172,6 +1165,86 @@
             registration.unregister();
           }
         });
+      }
+    }
+
+    // Configure push manager subscriptions
+    async function configurePushNotifications() {
+      if (!isServerAvailable) return;
+      if (!('serviceWorker' in navigator)) return;
+
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        
+        // Fetch VAPID Public Key from Python Server
+        const keyResp = await fetch(`${REGISTRY_SERVER_URL}/api/vapid-public-key`);
+        if (!keyResp.ok) throw new Error("VAPID key endpoint offline");
+        const keyData = await keyResp.json();
+
+        if (!keyData.publicKey || keyData.publicKey.startsWith("INSTALL")) {
+          console.warn("VAPID setup skipped. Check backend dependencies.");
+          return;
+        }
+
+        const convertedKey = urlB64ToUint8Array(keyData.publicKey);
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedKey
+        });
+
+        // Submit registration token mapped to the user phone number
+        if (myPhoneNumber) {
+          await fetch(`${REGISTRY_SERVER_URL}/api/subscribe`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              number: myPhoneNumber,
+              subscription: subscription
+            })
+          });
+          console.log("Background wake-alerts registered with Python Registry.");
+        }
+      } catch (err) {
+        console.warn("Could not register device push token: ", err);
+      }
+    }
+
+    function urlB64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    }
+
+    // Handle messages received from service worker (answering alerts)
+    function setupServiceWorkerMessageHandler() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data && event.data.type === 'ANSWER_PUSHED_CALL') {
+            const caller = event.data.callerNumber;
+            showToast(`Connecting back to inbound call from ${formatPhone(caller)}...`);
+            // The PeerJS broker on call handler will naturally intercept the physical call negotiation.
+          }
+        });
+      }
+    }
+
+    // Check if app was booted up by clicking background notifications
+    function checkForDeepLinkedCall() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const incomingCaller = urlParams.get('incoming_caller');
+      const isVideo = urlParams.get('is_video') === 'true';
+
+      if (incomingCaller && incomingCaller.length === 10) {
+        // Purge deep link query string silently
+        window.history.replaceState({}, document.title, window.location.pathname);
+        showToast(`Answering background ring alert from ${formatPhone(incomingCaller)}...`);
       }
     }
 
@@ -1199,7 +1272,6 @@
       document.getElementById('connection-status').textContent = "Disconnected";
       document.getElementById('status-indicator-dot').className = "w-2.5 h-2.5 rounded-full bg-slate-600";
       
-      document.getElementById('nav-bottom-bar').classList.add('hidden');
       showScreen('screen-register');
       showToast("Line deregistered.");
     }
