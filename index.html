@@ -122,7 +122,7 @@
               <span class="text-[9px] text-slate-500 font-medium tracking-widest uppercase mt-0.5">Secure P2P Voice & Video</span>
             </div>
           </div>
-          <!-- Minimal status dot -->
+          <!-- Status dot -->
           <div class="flex items-center gap-2 px-3.5 py-1.5 bg-m3-surfaceVariant rounded-full text-[11px] font-medium border border-slate-800/40" id="status-chip">
             <span class="w-2.5 h-2.5 rounded-full bg-amber-500" id="status-indicator-dot"></span>
             <span id="connection-status" class="text-slate-300 font-medium">Connecting...</span>
@@ -277,6 +277,28 @@
               </div>
             </div>
 
+            <!-- Server URL Configuration -->
+            <div class="p-5 flex flex-col gap-3">
+              <div class="flex items-center gap-4">
+                <div class="p-3 bg-m3-surface rounded-2xl text-m3-primary shadow-inner">
+                  <i data-lucide="server" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <p class="font-semibold text-sm text-white">Registry Server URL</p>
+                  <p class="text-xs text-slate-400">Configure central line lookups and background push routing</p>
+                </div>
+              </div>
+              <div class="flex gap-2 mt-1">
+                <input type="url" id="settings-server-url" class="flex-1 px-4 py-3 bg-m3-surface rounded-xl text-sm border border-slate-700/60 focus:outline-none focus:ring-1 focus:ring-m3-primary text-white font-mono" placeholder="https://...">
+                <button onclick="saveServerUrl()" class="px-5 py-3 bg-m3-primaryContainer text-m3-onPrimaryContainer hover:opacity-95 text-xs font-bold rounded-xl transition shadow-md whitespace-nowrap">
+                  Save
+                </button>
+                <button onclick="resetServerUrl()" class="px-4 py-3 bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-medium rounded-xl transition border border-slate-700/60" title="Reset to Default">
+                  Reset
+                </button>
+              </div>
+            </div>
+
             <!-- Signaling Indicator -->
             <div class="p-5 flex items-center gap-4">
               <div class="p-3 bg-m3-surface rounded-2xl text-m3-primary shadow-inner">
@@ -419,7 +441,9 @@
   </div>
 
   <script>
-    const REGISTRY_SERVER_URL = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1') ? "http://localhost:5000" : window.location.origin;
+    const DEFAULT_REGISTRY_URL = "https://murray-became-graphs-youth.trycloudflare.com";
+    let REGISTRY_SERVER_URL = localStorage.getItem('peervo_server_url') || DEFAULT_REGISTRY_URL;
+    
     let peer = null;
     let localStream = null;
     let activeCall = null;
@@ -442,6 +466,10 @@
     // On load sequence initialization
     window.addEventListener('load', () => {
       lucide.createIcons();
+      
+      // Populate Server configuration input
+      document.getElementById('settings-server-url').value = REGISTRY_SERVER_URL;
+      
       checkServerHealth();
       loadNotificationOptionState();
       loadStoredSession();
@@ -468,6 +496,44 @@
         isServerAvailable = false;
         routeIndicator.textContent = "Direct Peer-ID Namespace Mapping (Server Offline)";
       }
+    }
+
+    async function saveServerUrl() {
+      const urlInput = document.getElementById('settings-server-url').value.trim();
+      if (!urlInput) {
+        showToast("Server URL cannot be empty.");
+        return;
+      }
+      try {
+        new URL(urlInput); // basic schema validation
+      } catch (e) {
+        showToast("Please enter a valid absolute URL (e.g., https://example.com).");
+        return;
+      }
+
+      localStorage.setItem('peervo_server_url', urlInput);
+      REGISTRY_SERVER_URL = urlInput;
+      showToast("Registry URL updated!");
+
+      await checkServerHealth();
+      
+      if (myPhoneNumber) {
+        // Re-authenticate line session mapping to new endpoint if active
+        initiatePeerJS(myPhoneNumber);
+      }
+    }
+
+    function resetServerUrl() {
+      localStorage.removeItem('peervo_server_url');
+      REGISTRY_SERVER_URL = DEFAULT_REGISTRY_URL;
+      document.getElementById('settings-server-url').value = DEFAULT_REGISTRY_URL;
+      showToast("Registry URL reset to default!");
+      
+      checkServerHealth().then(() => {
+        if (myPhoneNumber) {
+          initiatePeerJS(myPhoneNumber);
+        }
+      });
     }
 
     function showToast(message) {
@@ -539,7 +605,6 @@
       lucide.createIcons();
     }
 
-    // Load active session from local storage
     function loadStoredSession() {
       const savedNum = localStorage.getItem('peervo_number');
       if (savedNum && savedNum.length === 10) {
@@ -624,6 +689,13 @@
         statusText.textContent = "Offline";
         dot.className = "w-2.5 h-2.5 rounded-full bg-red-500";
         
+        const btnReg = document.getElementById('btn-register');
+        if (btnReg) {
+          btnReg.disabled = false;
+          btnReg.innerHTML = '<span>Register Line</span><i data-lucide="chevron-right" class="w-5 h-5"></i>';
+          lucide.createIcons();
+        }
+        
         if (err.type === 'unavailable-id') {
           showToast("Identity conflict! That phone line is already claimed.");
           logoutNumber();
@@ -703,7 +775,7 @@
       dialInput.value = dialInput.value.slice(0, -1);
     }
 
-    // Contacts CRUD System
+    // Contacts System
     function saveContact() {
       const name = document.getElementById('contact-name').value.trim();
       const phone = document.getElementById('contact-phone').value.trim();
@@ -850,7 +922,6 @@
 
       if (isServerAvailable) {
         try {
-          // Fire a server push request first in case the target tab is closed
           fetch(`${REGISTRY_SERVER_URL}/api/call-alert`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1036,7 +1107,6 @@
       showToast("Call Ended");
     }
 
-    // Mute/Unmute hardware stream tracks
     function toggleMuteMic() {
       if (!localStream) return;
       state.isMuted = !state.isMuted;
@@ -1229,7 +1299,6 @@
           if (event.data && event.data.type === 'ANSWER_PUSHED_CALL') {
             const caller = event.data.callerNumber;
             showToast(`Connecting back to inbound call from ${formatPhone(caller)}...`);
-            // The PeerJS broker on call handler will naturally intercept the physical call negotiation.
           }
         });
       }
@@ -1242,7 +1311,6 @@
       const isVideo = urlParams.get('is_video') === 'true';
 
       if (incomingCaller && incomingCaller.length === 10) {
-        // Purge deep link query string silently
         window.history.replaceState({}, document.title, window.location.pathname);
         showToast(`Answering background ring alert from ${formatPhone(incomingCaller)}...`);
       }
