@@ -641,6 +641,16 @@
         }
       });
 
+      // Listen for incoming explicit control signals (e.g., Hangup) over data channels
+      peer.on('connection', (conn) => {
+        conn.on('data', (data) => {
+          if (data && data.type === 'HANGUP') {
+             console.log("Remote peer requested explicit hangup.");
+             handleRemoteHangup();
+          }
+        });
+      });
+
       peer.on('call', (incomingCall) => {
         activeCall = incomingCall;
         const callerID = incomingCall.peer.replace('peervo-', '');
@@ -943,14 +953,22 @@
     }
 
     function declineIncomingCall() {
-      simulateIncomingRingtone(false);
       if (activeCall) {
-        activeCall.close();
+        const callerPhone = activeCall.peer.replace('peervo-', '');
+        addLog('missed', callerPhone);
+        sendControlSignal(activeCall.peer, 'HANGUP');
       }
-      const callerPhone = activeCall ? activeCall.peer.replace('peervo-', '') : "0000000000";
-      addLog('missed', callerPhone);
-      activeCall = null;
-      navigateTo(state.activeView);
+      executeLocalTeardown();
+    }
+
+    function sendControlSignal(targetPeerId, signalType) {
+      if (peer && !peer.destroyed) {
+        const signalConn = peer.connect(targetPeerId);
+        signalConn.on('open', () => {
+          signalConn.send({ type: signalType });
+          setTimeout(() => signalConn.close(), 500);
+        });
+      }
     }
 
     function setupCallStreamHandlers(callObj, remoteNumber) {
@@ -966,7 +984,7 @@
             pc.connectionState === 'closed';
 
           if (isDisconnected) {
-            handleCallClosed(remoteNumber);
+            handleRemoteHangup();
           }
         };
 
@@ -986,14 +1004,14 @@
         localVid.srcObject = localStream;
 
         remoteStream.addEventListener('inactive', () => {
-          handleCallClosed(remoteNumber);
+          handleRemoteHangup();
         });
 
         remoteStream.getTracks().forEach(track => {
           track.addEventListener('ended', () => {
             const allEnded = remoteStream.getTracks().every(t => t.readyState === 'ended');
             if (allEnded) {
-              handleCallClosed(remoteNumber);
+              handleRemoteHangup();
             }
           });
         });
@@ -1011,11 +1029,11 @@
       });
 
       callObj.on('close', () => {
-        handleCallClosed(remoteNumber);
+        handleRemoteHangup();
       });
 
       callObj.on('error', (err) => {
-        handleCallClosed(remoteNumber);
+        handleRemoteHangup();
       });
     }
 
@@ -1032,7 +1050,7 @@
       }, 1000);
     }
 
-    function hangUpCall() {
+    function executeLocalTeardown() {
       simulateRingbackTone(false);
       simulateIncomingRingtone(false);
       clearTimeout(callTimeoutId);
@@ -1063,27 +1081,22 @@
       navigateTo(state.activeView);
     }
 
-    function handleCallClosed(remoteNumber) {
-      clearTimeout(callTimeoutId);
-      if (activeCallTimerId) {
-        clearInterval(activeCallTimerId);
-        activeCallTimerId = null;
+    function hangUpCall() {
+      if (activeCall) {
+        sendControlSignal(activeCall.peer, 'HANGUP');
       }
+      executeLocalTeardown();
+    }
 
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
+    function handleRemoteHangup() {
+      const isCalling = !document.getElementById('screen-calling').classList.contains('hidden');
+      const isIncoming = !document.getElementById('screen-incoming').classList.contains('hidden');
+      const isActive = !document.getElementById('screen-active-call').classList.contains('hidden');
+      
+      if (activeCall || isCalling || isIncoming || isActive) {
+         showToast("Call ended");
+         executeLocalTeardown();
       }
-
-      if (remoteNumber && callDurationSec > 0) {
-        const mins = Math.floor(callDurationSec / 60).toString().padStart(2, '0');
-        const secs = (callDurationSec % 60).toString().padStart(2, '0');
-        addLog('incoming', remoteNumber, `${mins}:${secs}`);
-      }
-
-      activeCall = null;
-      navigateTo(state.activeView);
-      showToast("Call ended");
     }
 
     function toggleMuteMic() {
