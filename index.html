@@ -511,7 +511,9 @@
       isMuted: false,
       isCamDisabled: false,
       isVideoCall: false,
-      activeView: 'dialer'
+      activeView: 'dialer',
+      outgoingTarget: null,       // Track outgoing target phone for retries
+      isRetryLoopActive: false    // Track state of call retry loop
     };
 
     let contacts = JSON.parse(localStorage.getItem('peervo_contacts')) || [];
@@ -527,7 +529,8 @@
       renderContacts();
       renderLogs();
       setupAppVisibilityListener();
-      checkForDeepLinkedCall();
+      checkForDeepLinkedCall(); // Checks URL on startup for active push parameters
+      setupServiceWorkerMessageListener(); // Handles foreground notification clicks
       runDiagnostics();
     });
 
@@ -762,6 +765,24 @@
           showToast("This number is already registered.");
           logoutNumber();
         }
+
+        // If callee is offline, caller's PeerJS immediately errors with 'peer-unavailable'
+        // Let's hold the calling screen and automatically retry while callee boots up!
+        if (err.type === 'peer-unavailable') {
+          logDiag("Target peer is offline. Initiating wake-up retry sequence...");
+          const statusText = document.getElementById('calling-status-text');
+          if (statusText) statusText.textContent = "Waking up recipient... (Retrying)";
+          
+          if (state.isRetryLoopActive) {
+            setTimeout(() => {
+              const isCallingScreenVisible = !document.getElementById('screen-calling').classList.contains('hidden');
+              if (isCallingScreenVisible && state.isRetryLoopActive) {
+                logDiag("Retrying WebRTC handshake call stream...");
+                attemptCallConnection();
+              }
+            }, 3000);
+          }
+        }
       });
 
       peer.on('connection', (conn) => {
@@ -781,6 +802,21 @@
 
         showIncomingCallScreen(callerID, isVideoIncoming);
       });
+    }
+
+    function attemptCallConnection() {
+      if (!peer || peer.destroyed || !state.outgoingTarget) return;
+      const targetPeerID = `peervo-${state.outgoingTarget}`;
+      
+      if (activeCall) {
+        activeCall.close();
+      }
+      
+      const outgoingCall = peer.call(targetPeerID, localStream, {
+        metadata: { video: state.isVideoCall }
+      });
+      activeCall = outgoingCall;
+      setupCallStreamHandlers(outgoingCall, state.outgoingTarget);
     }
 
     function playTone(freq1, freq2, duration) {
@@ -975,6 +1011,8 @@
       }
 
       state.isVideoCall = isVideo;
+      state.outgoingTarget = targetPhone; // Set retry targets
+      state.isRetryLoopActive = true;     // Enable calling retry sequence
 
       const contact = contacts.find(c => c.phone === targetPhone);
       document.getElementById('calling-phone-display').textContent = formatPhone(targetPhone);
@@ -1188,6 +1226,9 @@
       simulateIncomingRingtone(false);
       clearTimeout(callTimeoutId);
 
+      state.isRetryLoopActive = false; // Turn off wake-up loops on teardown
+      state.outgoingTarget = null;
+
       if (activeCallTimerId) {
         clearInterval(activeCallTimerId);
         activeCallTimerId = null;
@@ -1342,21 +1383,8 @@
 
     function registerUnifiedServiceWorker() {
       if ('serviceWorker' in navigator) {
-        logDiag("Checking for stale service workers...");
-        // Sweep and unregister old sw.js to prevent conflicts with the unified Firebase worker
-        return navigator.serviceWorker.getRegistrations().then((registrations) => {
-          let cleanPromises = [];
-          for (let reg of registrations) {
-            if (reg.active && reg.active.scriptURL.includes('/sw.js')) {
-              logDiag("Found stale sw.js background worker. Unregistering...");
-              cleanPromises.push(reg.unregister());
-            }
-          }
-          return Promise.all(cleanPromises);
-        }).then(() => {
-          logDiag("Registering combined worker (firebase-messaging-sw.js)...");
-          return navigator.serviceWorker.register('./sw.js');
-        }).then((registration) => {
+        logDiag("Registering combined worker (sw.js)...");
+        return navigator.serviceWorker.register('./sw.js').then((registration) => {
           logDiag("Unified worker registered successfully.");
           runDiagnostics();
           return registration;
@@ -1427,12 +1455,39 @@
       });
     }
 
+    function setupServiceWorkerMessageListener() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data && event.data.type === 'ANSWER_PUSHED_CALL') {
+            const caller = event.data.callerNumber;
+            const isVideo = event.data.isVideo === true || event.data.isVideo === "true";
+            
+            logDiag(`Intercepted foreground notification click from: ${caller}`);
+            state.isVideoCall = isVideo;
+            
+            // Instantly transition to the ringing screen inside the active tab
+            showIncomingCallScreen(caller, isVideo);
+          }
+        });
+      }
+    }
+
     function checkForDeepLinkedCall() {
       const urlParams = new URLSearchParams(window.location.search);
       const incomingCaller = urlParams.get('incoming_caller');
+      const isVideoParam = urlParams.get('is_video');
+      
       if (incomingCaller && incomingCaller.length === 10) {
+        // Clear the URL path parameter dynamically to avoid infinite dialing loops on browser refreshes
         window.history.replaceState({}, document.title, window.location.pathname);
-        showToast(`Connecting back to ${formatPhone(incomingCaller)}...`);
+        
+        showToast(`Auto-answering call from ${formatPhone(incomingCaller)}...`);
+        logDiag(`Deep-link startup detection: routing call screen for ${incomingCaller}`);
+        
+        state.isVideoCall = (isVideoParam === 'true');
+        
+        // Render the full screen Accept/Decline overlay right on application load!
+        showIncomingCallScreen(incomingCaller, state.isVideoCall);
       }
     }
 
