@@ -361,9 +361,9 @@
 
     <!-- 5. ACTIVE FULL SCREEN CALL PIPELINE -->
     <div id="screen-active-call" class="hidden absolute inset-0 bg-black flex flex-col justify-between z-40">
-      <div class="absolute inset-0 flex flex-col justify-center items-center bg-zinc-950">
+      <div class="absolute inset-0 flex flex-col justify-center items-center bg-black">
         <div class="relative w-full h-full flex items-center justify-center">
-          <video id="remote-video" class="w-full h-full object-cover" autoplay playsinline webkit-playsinline></video>
+          <video id="remote-video" class="w-full h-full object-contain" autoplay playsinline webkit-playsinline></video>
           
           <div id="audio-call-indicator" class="absolute inset-0 flex flex-col justify-center items-center bg-m3-background z-10">
             <div class="relative w-32 h-32 mx-auto mb-8 flex items-center justify-center">
@@ -378,8 +378,8 @@
           </div>
         </div>
 
-        <div id="local-video-container" class="absolute top-6 right-6 w-28 sm:w-36 h-40 sm:h-48 rounded-3xl border border-white/10 overflow-hidden shadow-2xl bg-slate-900 transition-all z-50">
-          <video id="local-video" class="w-full h-full object-cover transform -scale-x-100" autoplay playsinline webkit-playsinline muted></video>
+        <div id="local-video-container" class="absolute top-6 right-6 w-28 sm:w-40 h-auto rounded-2xl border border-white/10 overflow-hidden shadow-2xl bg-black transition-all z-50">
+          <video id="local-video" class="w-full h-auto object-contain transform -scale-x-100 block" autoplay playsinline webkit-playsinline muted></video>
         </div>
       </div>
 
