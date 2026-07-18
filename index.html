@@ -1342,9 +1342,9 @@
 
     function registerUnifiedServiceWorker() {
       if ('serviceWorker' in navigator) {
-        logDiag("Registering combined worker (firebase-messaging-sw.js)...");
+        logDiag("Registering combined worker (sw.js)...");
         // Using firebase-messaging-sw.js as the SINGLE service worker file for everything
-        return navigator.serviceWorker.register('./firebase-messaging-sw.js')
+        return navigator.serviceWorker.register('./sw.js')
           .then((registration) => {
             logDiag("Unified worker registered successfully.");
             runDiagnostics();
