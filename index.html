@@ -552,11 +552,11 @@
     let contacts = JSON.parse(localStorage.getItem('peervo_contacts')) || [];
     let callLogs = JSON.parse(localStorage.getItem('peervo_logs')) || [];
 
-    window.addEventListener('load', () => {
+    window.addEventListener('load', async () => {
       lucide.createIcons();
       document.getElementById('settings-server-url').value = REGISTRY_SERVER_URL;
       
-      checkServerHealth();
+      await checkServerHealth();
       loadNotificationOptionState();
       loadStoredSession();
       renderContacts();
@@ -621,6 +621,7 @@
     async function configureFirebasePush() {
       if (!('serviceWorker' in navigator) || !window.getToken || !window.messaging) {
         logDiag("FCM objects not ready yet. Retrying push configuration...");
+        setTimeout(configureFirebasePush, 1000);
         return;
       }
 
@@ -648,6 +649,8 @@
             } else {
               logDiag("Server mapping returned failure response.");
             }
+          } else if (!isServerAvailable) {
+            logDiag("Saved token locally. Registry server is currently unreachable.");
           } else {
             logDiag("Saved token locally. Register your line to link it to the server.");
           }
