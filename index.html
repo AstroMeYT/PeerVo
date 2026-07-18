@@ -513,7 +513,8 @@
       isVideoCall: false,
       activeView: 'dialer',
       outgoingTarget: null,       // Track outgoing target phone for retries
-      isRetryLoopActive: false    // Track state of call retry loop
+      isRetryLoopActive: false,   // Track state of call retry loop
+      pendingAccept: false        // Track if user clicked Accept before WebRTC stream arrived
     };
 
     let contacts = JSON.parse(localStorage.getItem('peervo_contacts')) || [];
@@ -738,7 +739,15 @@
           } catch (err) {}
         }
 
-        navigateTo(state.activeView);
+        // Fix: Prevent navigation from overriding active ringing or live call overlays
+        const incomingHidden = document.getElementById('screen-incoming').classList.contains('hidden');
+        const callingHidden = document.getElementById('screen-calling').classList.contains('hidden');
+        const activeCallHidden = document.getElementById('screen-active-call').classList.contains('hidden');
+
+        if (incomingHidden && callingHidden && activeCallHidden) {
+          navigateTo(state.activeView);
+        }
+        
         if (localStorage.getItem('peervo_notifications_enabled') === 'true') {
           configureFirebasePush();
         }
@@ -766,8 +775,6 @@
           logoutNumber();
         }
 
-        // If callee is offline, caller's PeerJS immediately errors with 'peer-unavailable'
-        // Let's hold the calling screen and automatically retry while callee boots up!
         if (err.type === 'peer-unavailable') {
           logDiag("Target peer is offline. Initiating wake-up retry sequence...");
           const statusText = document.getElementById('calling-status-text');
@@ -800,7 +807,13 @@
         const isVideoIncoming = incomingCall.options && incomingCall.options.metadata && incomingCall.options.metadata.video;
         state.isVideoCall = isVideoIncoming;
 
-        showIncomingCallScreen(callerID, isVideoIncoming);
+        // If callee has already tapped Accept during pending wake-up phase, execute answer instantly
+        if (state.pendingAccept) {
+          state.pendingAccept = false;
+          acceptIncomingCall();
+        } else {
+          showIncomingCallScreen(callerID, isVideoIncoming);
+        }
       });
     }
 
@@ -1085,7 +1098,13 @@
 
     async function acceptIncomingCall() {
       simulateIncomingRingtone(false);
-      if (!activeCall) return;
+      
+      if (!activeCall) {
+        // Handshake stream hasn't arrived yet; set a pending flag to auto-answer upon receipt
+        state.pendingAccept = true;
+        document.getElementById('incoming-type-text').textContent = "Connecting call...";
+        return;
+      }
 
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
@@ -1106,6 +1125,7 @@
     }
 
     function declineIncomingCall() {
+      state.pendingAccept = false;
       if (activeCall) {
         const callerPhone = activeCall.peer.replace('peervo-', '');
         addLog('missed', callerPhone);
@@ -1228,6 +1248,7 @@
 
       state.isRetryLoopActive = false; // Turn off wake-up loops on teardown
       state.outgoingTarget = null;
+      state.pendingAccept = false;    // Reset pending accept state
 
       if (activeCallTimerId) {
         clearInterval(activeCallTimerId);
