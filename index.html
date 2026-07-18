@@ -363,18 +363,23 @@
     <div id="screen-active-call" class="hidden absolute inset-0 bg-black flex flex-col justify-between z-40">
       <div class="absolute inset-0 flex flex-col justify-center items-center bg-zinc-950">
         <div class="relative w-full h-full flex items-center justify-center">
-          <video id="remote-video" class="w-full h-full object-cover" autoplay playsinline></video>
+          <video id="remote-video" class="w-full h-full object-cover" autoplay playsinline webkit-playsinline></video>
           
-          <div id="audio-call-indicator" class="absolute inset-0 flex flex-col justify-center items-center bg-zinc-900/95">
-            <div class="w-24 h-24 rounded-full bg-m3-primaryContainer flex items-center justify-center mb-4">
-              <i data-lucide="mic" class="w-10 h-10 text-m3-primary"></i>
+          <div id="audio-call-indicator" class="absolute inset-0 flex flex-col justify-center items-center bg-m3-background z-10">
+            <div class="relative w-32 h-32 mx-auto mb-8 flex items-center justify-center">
+              <div class="absolute inset-0 bg-m3-primary/10 rounded-full m3-ring"></div>
+              <div class="absolute inset-0 bg-m3-primary/20 rounded-full m3-ring" style="animation-delay: 1s"></div>
+              <div class="w-24 h-24 rounded-full bg-m3-surface border border-m3-primary/20 flex items-center justify-center relative z-10">
+                <i data-lucide="user" class="w-10 h-10 text-m3-primary"></i>
+              </div>
             </div>
-            <p class="text-white font-medium text-base tracking-wide" id="active-call-timer">Connected (00:00)</p>
+            <h3 id="active-call-name" class="text-2xl font-bold text-white mb-2">Unknown Line</h3>
+            <p class="text-m3-primary font-medium text-base tracking-wide" id="active-call-timer">00:00</p>
           </div>
         </div>
 
         <div id="local-video-container" class="absolute top-6 right-6 w-28 sm:w-36 h-40 sm:h-48 rounded-3xl border border-white/10 overflow-hidden shadow-2xl bg-slate-900 transition-all z-50">
-          <video id="local-video" class="w-full h-full object-cover transform -scale-x-100" autoplay playsinline muted></video>
+          <video id="local-video" class="w-full h-full object-cover transform -scale-x-100" autoplay playsinline webkit-playsinline muted></video>
         </div>
       </div>
 
@@ -1003,6 +1008,12 @@
         remoteVid.srcObject = remoteStream;
         localVid.srcObject = localStream;
 
+        // Force playback for WebView/App wrappers to bypass auto-pause lock
+        setTimeout(() => {
+          if (remoteVid.srcObject) remoteVid.play().catch(e => console.warn("Remote play blocked:", e));
+          if (localVid.srcObject) localVid.play().catch(e => console.warn("Local play blocked:", e));
+        }, 100);
+
         remoteStream.addEventListener('inactive', () => {
           handleRemoteHangup();
         });
@@ -1040,13 +1051,27 @@
     function showActiveCallScreen() {
       showScreen('screen-active-call');
       
+      // Look up and format Contact Name for Voice Call Background
+      if (activeCall) {
+        const remotePhone = activeCall.peer.replace('peervo-', '');
+        const contact = contacts.find(c => c.phone === remotePhone);
+        const nameDisplay = document.getElementById('active-call-name');
+        if (nameDisplay) {
+            nameDisplay.textContent = contact ? contact.name : formatPhone(remotePhone);
+        }
+      }
+
       callDurationSec = 0;
       clearInterval(activeCallTimerId);
+      
+      const timerDisplay = document.getElementById('active-call-timer');
+      if (timerDisplay) timerDisplay.textContent = '00:00';
+      
       activeCallTimerId = setInterval(() => {
         callDurationSec++;
         const mins = Math.floor(callDurationSec / 60).toString().padStart(2, '0');
         const secs = (callDurationSec % 60).toString().padStart(2, '0');
-        document.getElementById('active-call-timer').textContent = `Connected (${mins}:${secs})`;
+        if (timerDisplay) timerDisplay.textContent = `${mins}:${secs}`;
       }, 1000);
     }
 
