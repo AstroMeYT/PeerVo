@@ -5,7 +5,7 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Basic CORS configuration to allow local/remote PeerVo clients to connect
+# Cross-Origin Resource Sharing (CORS) Configuration
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -15,27 +15,33 @@ def after_request(response):
 
 DB_FILE = 'peervo_registry.db'
 
-# Try importing pywebpush for background call alert processing
+# Try importing and initializing the official Firebase Admin SDK
 try:
-    from pywebpush import webpush, WebPushException
-    # Standard static VAPID Keys. In production, keep private_key safe!
-    VAPID_PUBLIC_KEY = "BI9jA28R794YyD-YmQo_T1xW9K-V1v198gXmD-Yl876oKUpW-YadhR0Yv6vnrz5h4HhJG5jq0arBRuIrJdWXtQ"
-    VID_PRIVATE_KEY = "LqUduWL7V0F7pOrYep5oTgZJaCXLl7eRvMZMpAE6DCA"
-    PYWEBPUSH_AVAILABLE = True
+    import firebase_admin
+    from firebase_admin import credentials, messaging
+    
+    # Place your serviceAccountKey.json file in the same directory as this file
+    # To download this, go to Firebase Console > Project Settings > Service Accounts > Generate New Private Key
+    cred = credentials.Certificate("serviceAccountKey.json")
+    firebase_admin.initialize_app(cred)
+    FIREBASE_ADMIN_ACTIVE = True
+    print("[INIT] Firebase Admin SDK successfully configured.")
 except ImportError:
-    PYWEBPUSH_AVAILABLE = False
-    VAPID_PUBLIC_KEY = "INSTALL_PYWEBPUSH_FOR_BACKGROUND_CALLS"
-    VID_PRIVATE_KEY = ""
+    FIREBASE_ADMIN_ACTIVE = False
+    print("[WARNING] Run 'pip install firebase-admin' to execute background wake pushes.")
+except Exception as e:
+    FIREBASE_ADMIN_ACTIVE = False
+    print(f"[WARNING] Firebase SDK failed to initialize: {e}. Missing serviceAccountKey.json.")
 
 def init_db():
-    """Initializes SQLite database to persist registrations and push subscription tokens."""
+    """Initializes local SQLite database for device directories and push tokens."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS directory (
             phone_number TEXT PRIMARY KEY,
             peer_id TEXT NOT NULL,
-            subscription_info TEXT,
+            fcm_token TEXT,
             registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -46,31 +52,26 @@ init_db()
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
-    """Simple status check route to verify the registry server is running."""
+    """Status verification route."""
     return jsonify({
         "status": "online",
-        "service": "PeerVo Registry System",
-        "pywebpush_active": PYWEBPUSH_AVAILABLE,
-        "version": "1.1.0"
+        "service": "PeerVo FCM Signaling Registry",
+        "firebase_active": FIREBASE_ADMIN_ACTIVE,
+        "version": "2.0.0"
     }), 200
-
-@app.route('/api/vapid-public-key', methods=['GET'])
-def get_vapid_key():
-    """Returns the server VAPID key pair for registering notification subscriptions."""
-    return jsonify({"publicKey": VAPID_PUBLIC_KEY}), 200
 
 @app.route('/api/register', methods=['POST'])
 def register_number():
-    """Registers a new 10-digit phone number with its corresponding PeerJS ID."""
+    """Registers/Maps a 10-digit number to its current PeerJS connection target."""
     data = request.json or {}
     phone_number = data.get('number', '').strip()
     peer_id = data.get('peerId', '').strip()
 
     if not phone_number.isdigit() or len(phone_number) != 10:
-        return jsonify({"error": "Invalid phone number. Must be exactly 10 digits."}), 400
+        return jsonify({"error": "Number must be exactly 10 digits."}), 400
     
     if not peer_id:
-        return jsonify({"error": "Missing PeerJS PeerID."}), 400
+        return jsonify({"error": "Missing PeerJS target ID."}), 400
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -80,116 +81,95 @@ def register_number():
         
         if row:
             if row[0] == peer_id:
-                return jsonify({"message": "Number already registered.", "number": phone_number}), 200
+                return jsonify({"message": "Active listing updated.", "number": phone_number}), 200
             else:
-                return jsonify({"error": "This 10-digit number is already claimed by another device."}), 409
+                return jsonify({"error": "Line already registered to another terminal."}), 409
         
         cursor.execute("INSERT INTO directory (phone_number, peer_id) VALUES (?, ?)", (phone_number, peer_id))
         conn.commit()
-        return jsonify({
-            "success": True,
-            "message": "Successfully registered number!",
-            "number": phone_number,
-            "peerId": peer_id
-        }), 201
-
+        return jsonify({"success": True, "number": phone_number}), 201
     except sqlite3.Error as e:
-        return jsonify({"error": f"Database error: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
 @app.route('/api/subscribe', methods=['POST'])
 def subscribe_device():
-    """Maps a user's notification push subscription to their phone number."""
+    """Maps a generated device Firebase token identifier directly to its active line."""
     data = request.json or {}
     phone_number = data.get('number', '').strip()
-    subscription = data.get('subscription')
+    fcm_token = data.get('token', '').strip()
 
-    if not phone_number or not subscription:
-        return jsonify({"error": "Missing registration data"}), 400
-
-    subscription_str = json.dumps(subscription)
+    if not phone_number or not fcm_token:
+        return jsonify({"error": "Registration request requires phone number and token."}), 400
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     try:
-        cursor.execute("UPDATE directory SET subscription_info = ? WHERE phone_number = ?", (subscription_str, phone_number))
+        cursor.execute("UPDATE directory SET fcm_token = ? WHERE phone_number = ?", (fcm_token, phone_number))
         conn.commit()
-        return jsonify({"success": True, "message": "Notification token mapped."}), 200
+        print(f"[REGISTRY] Token successfully mapped for line {phone_number}.")
+        return jsonify({"success": True, "message": "FCM device registration updated."}), 200
     except sqlite3.Error as e:
-        return jsonify({"error": f"Database error: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
 @app.route('/api/call-alert', methods=['POST'])
 def trigger_call_push():
-    """Wakes the callee's background Service Worker via Web Push if tab is closed."""
+    """Wakes the callee's closed app wrapper using highly-reliable Firebase Cloud Messaging."""
     data = request.json or {}
     caller = data.get('caller', '').strip()
     callee = data.get('callee', '').strip()
     is_video = data.get('video', False)
 
     if not callee:
-        return jsonify({"error": "Missing target number"}), 400
+        return jsonify({"error": "Missing destination contact parameter."}), 400
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT subscription_info FROM directory WHERE phone_number = ?", (callee,))
+    cursor.execute("SELECT fcm_token FROM directory WHERE phone_number = ?", (callee,))
     row = cursor.fetchone()
     conn.close()
 
     if row and row[0]:
-        sub_info = json.loads(row[0])
-        if PYWEBPUSH_AVAILABLE:
+        target_token = row[0]
+        
+        if FIREBASE_ADMIN_ACTIVE:
             try:
-                payload = json.dumps({
-                    "type": "INCOMING_CALL",
-                    "caller": caller,
-                    "isVideo": is_video
-                })
-                webpush(
-                    subscription_info=sub_info,
-                    data=payload,
-                    vapid_private_key=VID_PRIVATE_KEY,
-                    vapid_claims={"sub": "mailto:support@peervo.local"},
-                    ttl=45
+                # Build unified Firebase Message payload
+                message = messaging.Message(
+                    data={
+                        'type': 'INCOMING_CALL',
+                        'caller': caller,
+                        'isVideo': str(is_video).lower()
+                    },
+                    token=target_token,
+                    # High priority wakes screens on devices even in idle/doze profiles
+                    android=messaging.AndroidConfig(
+                        priority='high'
+                    ),
+                    apns=messaging.APNSConfig(
+                        payload=messaging.APNSPayload(
+                            aps=messaging.Aps(content_available=True)
+                        )
+                    )
                 )
-                return jsonify({"success": True, "message": "Background wake notification successfully delivered."}), 200
-            except WebPushException as ex:
-                return jsonify({"success": False, "error": f"Push network delivery failure: {repr(ex)}"}), 500
+                
+                response = messaging.send(message)
+                print(f"[PUSH] Message successfully sent to FCM. Dispatch tracking ID: {response}")
+                return jsonify({"success": True, "message": "FCM payload successfully delivered."}), 200
+            except Exception as ex:
+                print(f"[ERROR] FCM push dispatch failed: {ex}")
+                return jsonify({"success": False, "error": f"FCM server error: {ex}"}), 500
         else:
-            return jsonify({"success": False, "message": "WebPush library unavailable on server registry."}), 200
+            return jsonify({"success": False, "message": "Server Firebase credentials unconfigured."}), 200
 
-    return jsonify({"success": False, "message": "Callee has no active offline push subscription registered."}), 404
-
-@app.route('/api/lookup/<phone_number>', methods=['GET'])
-def lookup_number(phone_number):
-    """Checks if a 10-digit number exists and returns its Peer ID."""
-    phone_number = phone_number.strip()
-    if not phone_number.isdigit() or len(phone_number) != 10:
-        return jsonify({"error": "Invalid format. Must be 10 digits."}), 400
-
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT peer_id FROM directory WHERE phone_number = ?", (phone_number,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if row:
-        return jsonify({
-            "exists": True,
-            "number": phone_number,
-            "peerId": row[0]
-        }), 200
-    else:
-        return jsonify({
-            "exists": False,
-            "message": "Number not found in directory."
-        }), 404
+    return jsonify({"success": False, "message": "Recipient has not mapped an active device token."}), 404
 
 @app.route('/api/deregister', methods=['POST'])
 def deregister_number():
-    """Unregisters a phone number from the registry."""
+    """Unregisters an active terminal listing."""
     data = request.json or {}
     phone_number = data.get('number', '').strip()
     peer_id = data.get('peerId', '').strip()
@@ -202,14 +182,12 @@ def deregister_number():
     conn.close()
 
     if changes > 0:
-        return jsonify({"success": True, "message": "Successfully deregistered number."}), 200
-    return jsonify({"error": "No matching active registration found to deregister."}), 400
+        return jsonify({"success": True}), 200
+    return jsonify({"error": "No matching active registration found."}), 400
 
 if __name__ == '__main__':
-    print("------------------------------------------")
-    print("  PeerVo Registry Server Running On Port 5000")
-    if not PYWEBPUSH_AVAILABLE:
-        print("  NOTICE: Run `pip install pywebpush` to enable background push alerts when tabs are closed.")
-    print("  Press Ctrl+C to stop.")
-    print("------------------------------------------")
+    print("-----------------------------------------------------------------")
+    print("  PeerVo FCM Registry Server active on port 5000")
+    print("  Be sure to install: pip install flask firebase-admin")
+    print("-----------------------------------------------------------------")
     app.run(host='0.0.0.0', port=5000, debug=True)

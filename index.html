@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>PeerVo - P2P IP Phone</title>
+  <title>PeerVo - Firebase P2P Phone</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -23,13 +23,13 @@
           },
           colors: {
             m3: {
-              background: '#0D0C0F',       // Pure dark background
-              surface: '#16141A',          // M3 Elevated surface
-              surfaceVariant: '#211F26',   // Container fill
-              primary: '#D0BCFF',          // Signature M3 Purple
-              primaryContainer: '#4F378B', // Active containers
+              background: '#0D0C0F',       
+              surface: '#16141A',          
+              surfaceVariant: '#211F26',   
+              primary: '#D0BCFF',          
+              primaryContainer: '#4F378B', 
               onPrimaryContainer: '#EADDFF',
-              secondaryContainer: '#332D41', // Bottom bar pill active
+              secondaryContainer: '#332D41', 
               onSecondaryContainer: '#E8DEF8',
               neutralVariant: '#E6E1E5',
               outline: '#49454F'
@@ -246,8 +246,8 @@
                   <i data-lucide="bell" class="w-4 h-4"></i>
                 </div>
                 <div>
-                  <p class="font-semibold text-xs text-white">Notifications</p>
-                  <p class="text-[10px] text-slate-400">Request OS alert permissions</p>
+                  <p class="font-semibold text-xs text-white">FCM Push Notifications</p>
+                  <p class="text-[10px] text-slate-400">Receive background calls via Firebase</p>
                 </div>
               </div>
               <div>
@@ -265,8 +265,8 @@
                   <i data-lucide="server" class="w-4 h-4"></i>
                 </div>
                 <div>
-                  <p class="font-semibold text-xs text-white">Server URL</p>
-                  <p class="text-[10px] text-slate-400">Wake server routing</p>
+                  <p class="font-semibold text-xs text-white">Registry Server URL</p>
+                  <p class="text-[10px] text-slate-400">FCM signaling server route</p>
                 </div>
               </div>
               <div class="flex gap-2 mt-0.5">
@@ -281,7 +281,7 @@
           <!-- Notification & PWA Diagnostics Console -->
           <div class="bg-m3-surface p-5 rounded-3xl border border-m3-outline/10 shadow-md">
             <h4 class="text-xs font-semibold text-m3-primary uppercase tracking-wide mb-3 flex items-center gap-2">
-              <i data-lucide="shield-alert" class="w-4 h-4"></i> Diagnostics Console
+              <i data-lucide="shield-alert" class="w-4 h-4"></i> FCM Diagnostics Console
             </h4>
             <div class="space-y-2 text-[11px]">
               <div class="flex justify-between border-b border-m3-outline/5 pb-1">
@@ -297,7 +297,7 @@
                 <span id="diag-permission" class="font-bold text-red-400">Checking...</span>
               </div>
               <div class="flex justify-between border-b border-m3-outline/5 pb-1">
-                <span class="text-slate-400">Push Engine Support:</span>
+                <span class="text-slate-400">FCM Push Engine Support:</span>
                 <span id="diag-push-support" class="font-bold text-red-400">Checking...</span>
               </div>
               <div class="flex flex-col pt-1">
@@ -359,7 +359,7 @@
       </div>
 
       <div class="w-full flex justify-center mb-8">
-        <button onclick="hangUpCall()" class="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition-all">
+        <button onclick="hangUpCall()" class="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-white shadow-lg active:scale-[0.95] transition-all">
           <i data-lucide="phone-off" class="w-7 h-7"></i>
         </button>
       </div>
@@ -444,6 +444,53 @@
 
   </div>
 
+  <script type="module">
+    // Import modular Firebase SDKs
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
+
+    // IMPORTANT: Replace this config with your values from the Firebase Console (Project Settings > General)
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    // Replace with your Web Push Public VAPID Key (Project Settings > Cloud Messaging > Web Push Certificates)
+    const VAPID_KEY = "YOUR_PUBLIC_VAPID_KEY";
+
+    let firebaseApp;
+    let messaging;
+
+    // Initialize Firebase if settings exist
+    if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+      firebaseApp = initializeApp(firebaseConfig);
+      messaging = getMessaging(firebaseApp);
+      
+      // Handle foreground messages if app is active
+      onMessage(messaging, (payload) => {
+        logDiag("Foreground push notification caught.");
+        if (payload.data && payload.data.type === 'INCOMING_CALL') {
+          const caller = payload.data.caller;
+          const isVideo = payload.data.isVideo === "true";
+          state.isVideoCall = isVideo;
+          // Set call object setup (waiting for dynamic Peer connection match)
+          showIncomingCallScreen(caller, isVideo);
+        }
+      });
+    } else {
+      console.warn("Firebase not initialized: Please supply credentials inside config.");
+    }
+
+    // Export variables so the standard vanilla script can access them
+    window.firebaseApp = firebaseApp;
+    window.messaging = messaging;
+    window.fcmVapidKey = VAPID_KEY;
+  </script>
+
   <script>
     const DEFAULT_REGISTRY_URL = "https://murray-became-graphs-youth.trycloudflare.com";
     let REGISTRY_SERVER_URL = localStorage.getItem('peervo_server_url') || DEFAULT_REGISTRY_URL;
@@ -478,7 +525,7 @@
       loadStoredSession();
       renderContacts();
       renderLogs();
-      setupServiceWorkerMessageHandler();
+      setupAppVisibilityListener();
       checkForDeepLinkedCall();
       runDiagnostics();
     });
@@ -690,7 +737,7 @@
 
         navigateTo(state.activeView);
         if (localStorage.getItem('peervo_notifications_enabled') === 'true') {
-          configurePushNotifications();
+          configureFirebasePush();
         }
       });
 
@@ -717,7 +764,6 @@
         }
       });
 
-      // Listen for incoming explicit control signals (e.g., Hangup) over data channels
       peer.on('connection', (conn) => {
         conn.on('data', (data) => {
           if (data && data.type === 'HANGUP') {
@@ -733,24 +779,11 @@
         const isVideoIncoming = incomingCall.options && incomingCall.options.metadata && incomingCall.options.metadata.video;
         state.isVideoCall = isVideoIncoming;
 
-        if (document.hidden && Notification.permission === 'granted') {
-          try {
-            new Notification('PeerVo - Incoming Call', {
-              body: `Incoming ${state.isVideoCall ? 'Video' : 'Audio'} Call from ${callerID}`,
-              icon: 'https://placehold.co/128x128/6366f1/ffffff?text=📞',
-              requireInteraction: true
-            });
-            logDiag("Fired fallback Local Notification.");
-          } catch (e) {
-            logDiag("Failed to fire fallback Local Notification: " + e.message);
-          }
-        }
-
         showIncomingCallScreen(callerID, isVideoIncoming);
       });
     }
 
-    // Audio tone generations
+    // Audio Tone Generator System
     function playTone(freq1, freq2, duration) {
       try {
         if (!audioCtx) {
@@ -944,7 +977,6 @@
 
       state.isVideoCall = isVideo;
 
-      // 1. Immediately show calling screen (NO blocking server delays!)
       const contact = contacts.find(c => c.phone === targetPhone);
       document.getElementById('calling-phone-display').textContent = formatPhone(targetPhone);
       document.getElementById('calling-name-display').textContent = contact ? contact.name : "Direct Line";
@@ -953,10 +985,9 @@
       showScreen('screen-calling');
       simulateRingbackTone(true);
 
-      // Direct WebRTC connection identifier
       const targetPeerID = `peervo-${targetPhone}`;
 
-      // 2. Fire background push wake notification (Non-blocking background fetch)
+      // Dispatch Firebase Push Alert through Python backend (Non-blocking background promise)
       if (isServerAvailable) {
         fetch(`${REGISTRY_SERVER_URL}/api/call-alert`, {
           method: 'POST',
@@ -965,14 +996,12 @@
         }).catch(() => {});
       }
 
-      // 3. Request permissions and execute direct Peer call
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
           video: isVideo,
           audio: true
         });
 
-        // Safe guard check: Did they hang up while we were accepting mic permissions?
         if (document.getElementById('screen-calling').classList.contains('hidden')) {
           if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
@@ -988,7 +1017,6 @@
         activeCall = outgoingCall;
         setupCallStreamHandlers(outgoingCall, targetPhone);
         
-        // 4. Setup Outgoing Call Timeout (30 seconds limit)
         setupCallTimeout(targetPhone);
 
       } catch (err) {
@@ -1006,7 +1034,7 @@
           addLog('missed', remoteNumber);
           hangUpCall();
         }
-      }, 30000); // 30 seconds
+      }, 30000); 
     }
 
     function showIncomingCallScreen(callerNumber, isVideo) {
@@ -1092,7 +1120,7 @@
         remoteVid.srcObject = remoteStream;
         localVid.srcObject = localStream;
 
-        // Force playback for WebView/App wrappers to bypass auto-pause lock
+        // Bypassing autoplay restrictions
         setTimeout(() => {
           if (remoteVid.srcObject) remoteVid.play().catch(e => console.warn("Remote play blocked:", e));
           if (localVid.srcObject) localVid.play().catch(e => console.warn("Local play blocked:", e));
@@ -1135,7 +1163,6 @@
     function showActiveCallScreen() {
       showScreen('screen-active-call');
       
-      // Look up and format Contact Name for Voice Call Background
       if (activeCall) {
         const remotePhone = activeCall.peer.replace('peervo-', '');
         const contact = contacts.find(c => c.phone === remotePhone);
@@ -1288,7 +1315,7 @@
       const isEnabled = localStorage.getItem('peervo_notifications_enabled') === 'true';
       toggle.checked = isEnabled;
       if (isEnabled) {
-        registerServiceWorker();
+        registerFirebaseServiceWorker();
       }
     }
 
@@ -1298,41 +1325,39 @@
           runDiagnostics();
           if (permission === 'granted') {
             localStorage.setItem('peervo_notifications_enabled', 'true');
-            logDiag("Permission granted. Initializing registration...");
-            registerServiceWorker().then(() => {
-              configurePushNotifications();
+            logDiag("Permission granted. Booting Service Worker...");
+            registerFirebaseServiceWorker().then(() => {
+              configureFirebasePush();
             });
           } else {
             checkbox.checked = false;
             localStorage.setItem('peervo_notifications_enabled', 'false');
             showToast("Notification permission denied.");
-            logDiag("Notification permission denied by user.");
+            logDiag("Notification permission denied.");
           }
         });
       } else {
         localStorage.setItem('peervo_notifications_enabled', 'false');
         unregisterServiceWorker();
         showToast("Notifications disabled.");
-        logDiag("Notifications manually deactivated.");
         runDiagnostics();
       }
     }
 
-    function registerServiceWorker() {
+    function registerFirebaseServiceWorker() {
       if ('serviceWorker' in navigator) {
-        logDiag("Attempting to register sw.js...");
-        return navigator.serviceWorker.register('./sw.js')
+        logDiag("Registering firebase-messaging-sw.js...");
+        return navigator.serviceWorker.register('./firebase-messaging-sw.js')
           .then((registration) => {
-            logDiag("sw.js successfully registered. Active scope: " + registration.scope);
+            logDiag("Service worker registered. Scope: " + registration.scope);
             runDiagnostics();
             return registration;
           })
           .catch((err) => {
             logDiag("Registration failed: " + err.message);
-            showToast("Service Worker failed. Local app wrapper restriction?");
           });
       }
-      logDiag("Service Workers are completely unsupported in this context.");
+      logDiag("Service Workers are unsupported.");
       return Promise.reject();
     }
 
@@ -1341,131 +1366,60 @@
         navigator.serviceWorker.getRegistrations().then((registrations) => {
           for (let registration of registrations) {
             registration.unregister();
-            logDiag("Unregistered service worker scope: " + registration.scope);
+            logDiag("Deregistered service worker.");
           }
         });
       }
     }
 
-    async function configurePushNotifications() {
+    async function configureFirebasePush() {
       if (!isServerAvailable) {
-        logDiag("Push configuration skipped (Registry Server is offline).");
+        logDiag("Push mapping skipped: server is offline.");
         return;
       }
-      if (!('serviceWorker' in navigator)) return;
+      if (!window.messaging) {
+        logDiag("FCM Messaging engine is not initialized. Supply credentials.");
+        return;
+      }
 
       try {
         const registration = await navigator.serviceWorker.ready;
-        if (!('pushManager' in registration)) {
-          logDiag("PushManager is blocked/disabled on this container.");
-          return;
-        }
-
-        const keyResp = await fetch(`${REGISTRY_SERVER_URL}/api/vapid-public-key`);
-        if (!keyResp.ok) throw new Error("Could not retrieve VAPID key");
-        const keyData = await keyResp.json();
-
-        if (!keyData.publicKey || keyData.publicKey.startsWith("INSTALL")) {
-          logDiag("VAPID missing on server registry. Install pywebpush on host.");
-          return;
-        }
-
-        const convertedKey = urlB64ToUint8Array(keyData.publicKey);
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: convertedKey
+        
+        // Fetch unique Firebase registration token
+        const token = await window.getToken(window.messaging, {
+          serviceWorkerRegistration: registration,
+          vapidKey: window.fcmVapidKey
         });
 
-        logDiag("Successfully subscribed to background Web Push server.");
-
-        if (myPhoneNumber) {
-          await fetch(`${REGISTRY_SERVER_URL}/api/subscribe`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              number: myPhoneNumber,
-              subscription: subscription
-            })
-          });
-          logDiag("Registered Web Push subscription token with callee registry mapping.");
+        if (token) {
+          logDiag("Retrieved FCM Registration Token.");
+          
+          if (myPhoneNumber) {
+            // Send FCM token mapping directly to python registry server
+            await fetch(`${REGISTRY_SERVER_URL}/api/subscribe`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                number: myPhoneNumber,
+                token: token
+              })
+            });
+            logDiag("Mapped FCM Token to registration list.");
+          }
+        } else {
+          logDiag("Failed to extract active client token.");
         }
       } catch (err) {
-        logDiag("Failed Web Push setup: " + err.message);
+        logDiag("FCM registration failed: " + err.message);
       }
     }
 
-    function registerServiceWorker() {
-      if ('serviceWorker' in navigator) {
-        return navigator.serviceWorker.register('./sw.js')
-          .then((registration) => {
-            return registration;
-          })
-          .catch(() => {});
-      }
-      return Promise.reject();
-    }
-
-    function unregisterServiceWorker() {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          for (let registration of registrations) {
-            registration.unregister();
-          }
-        });
-      }
-    }
-
-    async function configurePushNotifications() {
-      if (!isServerAvailable) return;
-      if (!('serviceWorker' in navigator)) return;
-
-      try {
-        const registration = await navigator.serviceWorker.ready;
-        const keyResp = await fetch(`${REGISTRY_SERVER_URL}/api/vapid-public-key`);
-        if (!keyResp.ok) throw new Error();
-        const keyData = await keyResp.json();
-
-        if (!keyData.publicKey || keyData.publicKey.startsWith("INSTALL")) return;
-
-        const convertedKey = urlB64ToUint8Array(keyData.publicKey);
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: convertedKey
-        });
-
-        if (myPhoneNumber) {
-          await fetch(`${REGISTRY_SERVER_URL}/api/subscribe`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              number: myPhoneNumber,
-              subscription: subscription
-            })
-          });
+    function setupAppVisibilityListener() {
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          logDiag("App active; suppressing redundant push messages.");
         }
-      } catch (err) {}
-    }
-
-    function urlB64ToUint8Array(base64String) {
-      const padding = '='.repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-      const rawData = window.atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
-      for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-      }
-      return outputArray;
-    }
-
-    function setupServiceWorkerMessageHandler() {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.addEventListener('message', (event) => {
-          if (event.data && event.data.type === 'ANSWER_PUSHED_CALL') {
-            const caller = event.data.callerNumber;
-            showToast(`Connecting back to ${formatPhone(caller)}...`);
-          }
-        });
-      }
+      });
     }
 
     function checkForDeepLinkedCall() {
