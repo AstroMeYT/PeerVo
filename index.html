@@ -535,6 +535,92 @@
       runDiagnostics();
     });
 
+    function loadNotificationOptionState() {
+      const checkbox = document.getElementById('notification-toggle');
+      const isEnabled = localStorage.getItem('peervo_notifications_enabled') === 'true';
+      if (checkbox) {
+        checkbox.checked = isEnabled;
+      }
+    }
+
+    async function toggleNotifications(checkbox) {
+      const isEnabled = checkbox.checked;
+      localStorage.setItem('peervo_notifications_enabled', isEnabled);
+      
+      if (isEnabled) {
+        if ('Notification' in window) {
+          const permission = await Notification.requestPermission();
+          runDiagnostics();
+          if (permission === 'granted') {
+            configureFirebasePush();
+          } else {
+            showToast("Notification permission denied.");
+            checkbox.checked = false;
+            localStorage.setItem('peervo_notifications_enabled', 'false');
+          }
+        } else {
+          showToast("Notifications not supported in this browser.");
+          checkbox.checked = false;
+          localStorage.setItem('peervo_notifications_enabled', 'false');
+        }
+      } else {
+        showToast("Notifications disabled.");
+        if (isServerAvailable && myPhoneNumber) {
+          try {
+            await fetch(`${REGISTRY_SERVER_URL}/api/subscribe`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ number: myPhoneNumber, token: "" })
+            });
+            logDiag("Removed active push token from registry.");
+          } catch (err) {
+            logDiag("Failed to clean token on server: " + err.message);
+          }
+        }
+      }
+    }
+
+    async function configureFirebasePush() {
+      if (!('serviceWorker' in navigator) || !window.getToken || !window.messaging) {
+        logDiag("FCM objects not ready yet. Retrying push configuration...");
+        return;
+      }
+
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        logDiag("Service worker active. Extracting browser push token...");
+        
+        const token = await window.getToken(window.messaging, {
+          serviceWorkerRegistration: reg,
+          vapidKey: window.fcmVapidKey
+        });
+
+        if (token) {
+          logDiag("FCM registration token acquired successfully!");
+          localStorage.setItem('peervo_fcm_token', token);
+          
+          if (myPhoneNumber && isServerAvailable) {
+            const response = await fetch(`${REGISTRY_SERVER_URL}/api/subscribe`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ number: myPhoneNumber, token: token })
+            });
+            if (response.ok) {
+              logDiag("Token synced. Ready to receive background calls!");
+            } else {
+              logDiag("Server mapping returned failure response.");
+            }
+          } else {
+            logDiag("Saved token locally. Register your line to link it to the server.");
+          }
+        } else {
+          logDiag("FCM returned empty token. Please check VAPID key configurations.");
+        }
+      } catch (err) {
+        logDiag("FCM Configuration failed: " + err.message);
+      }
+    }
+
     function runDiagnostics() {
       const isSecure = window.isSecureContext;
       const swSupport = 'serviceWorker' in navigator;
@@ -776,7 +862,7 @@
         }
 
         if (err.type === 'peer-unavailable') {
-          logDiag("Target peer is offline. Initiating wake-up retry sequence...");
+          logDiag("Target peer is offline. Retrying connection...");
           const statusText = document.getElementById('calling-status-text');
           if (statusText) statusText.textContent = "Waking up recipient... (Retrying)";
           
@@ -1101,8 +1187,6 @@
     }
 
     async function acceptIncomingCall() {
-      simulateIncomingRingtone(false);
-      
       // Request media permissions immediately so localStream is prepared for the incoming handshake
       if (!localStream) {
         try {
@@ -1118,11 +1202,13 @@
       }
 
       if (!activeCall) {
-        // Handshake stream hasn't arrived yet; set a pending flag to auto-answer upon receipt
         state.pendingAccept = true;
         document.getElementById('incoming-type-text').textContent = "Connecting call...";
+        // Keep the ringtone playing to provide continuous status feedback
         return;
       }
+
+      simulateIncomingRingtone(false); // Stop ringing now that handshake is confirmed
 
       try {
         activeCall.answer(localStream);
@@ -1161,6 +1247,9 @@
       if (callObj.peerConnection) {
         const pc = callObj.peerConnection;
         const checkConnectionDrop = () => {
+          // Do not interrupt the connection process with teardown events during the wake-up retry cycle
+          if (state.isRetryLoopActive) return;
+
           const isDisconnected = 
             pc.iceConnectionState === 'disconnected' || 
             pc.iceConnectionState === 'failed' || 
@@ -1181,6 +1270,9 @@
       callObj.on('stream', (remoteStream) => {
         clearTimeout(callTimeoutId);
         simulateRingbackTone(false);
+        
+        // Handshake established! Switch out of retry cycle and allow call events to control state
+        state.isRetryLoopActive = false;
         showActiveCallScreen();
 
         const remoteVid = document.getElementById('remote-video');
@@ -1195,13 +1287,13 @@
         }, 100);
 
         remoteStream.addEventListener('inactive', () => {
-          handleRemoteHangup();
+          if (!state.isRetryLoopActive) handleRemoteHangup();
         });
 
         remoteStream.getTracks().forEach(track => {
           track.addEventListener('ended', () => {
             const allEnded = remoteStream.getTracks().every(t => t.readyState === 'ended');
-            if (allEnded) {
+            if (allEnded && !state.isRetryLoopActive) {
               handleRemoteHangup();
             }
           });
@@ -1220,271 +1312,14 @@
       });
 
       callObj.on('close', () => {
-        handleRemoteHangup();
+        if (!state.isRetryLoopActive) {
+          handleRemoteHangup();
+        }
       });
 
       callObj.on('error', (err) => {
-        handleRemoteHangup();
-      });
-    }
-
-    function showActiveCallScreen() {
-      showScreen('screen-active-call');
-      
-      if (activeCall) {
-        const remotePhone = activeCall.peer.replace('peervo-', '');
-        const contact = contacts.find(c => c.phone === remotePhone);
-        const nameDisplay = document.getElementById('active-call-name');
-        if (nameDisplay) {
-            nameDisplay.textContent = contact ? contact.name : formatPhone(remotePhone);
-        }
-      }
-
-      callDurationSec = 0;
-      clearInterval(activeCallTimerId);
-      
-      const timerDisplay = document.getElementById('active-call-timer');
-      if (timerDisplay) timerDisplay.textContent = '00:00';
-      
-      activeCallTimerId = setInterval(() => {
-        callDurationSec++;
-        const mins = Math.floor(callDurationSec / 60).toString().padStart(2, '0');
-        const secs = (callDurationSec % 60).toString().padStart(2, '0');
-        if (timerDisplay) timerDisplay.textContent = `${mins}:${secs}`;
-      }, 1000);
-    }
-
-    function executeLocalTeardown() {
-      simulateRingbackTone(false);
-      simulateIncomingRingtone(false);
-      clearTimeout(callTimeoutId);
-
-      state.isRetryLoopActive = false; // Turn off wake-up loops on teardown
-      state.outgoingTarget = null;
-      state.pendingAccept = false;    // Reset pending accept state
-
-      if (activeCallTimerId) {
-        clearInterval(activeCallTimerId);
-        activeCallTimerId = null;
-      }
-
-      const remoteNum = activeCall ? activeCall.peer.replace('peervo-', '') : null;
-      
-      if (activeCall) {
-        activeCall.close();
-      }
-
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-      }
-
-      if (remoteNum && callDurationSec > 0) {
-        const mins = Math.floor(callDurationSec / 60).toString().padStart(2, '0');
-        const secs = (callDurationSec % 60).toString().padStart(2, '0');
-        addLog('incoming', remoteNum, `${mins}:${secs}`);
-      }
-
-      activeCall = null;
-      navigateTo(state.activeView);
-    }
-
-    function hangUpCall() {
-      if (activeCall) {
-        sendControlSignal(activeCall.peer, 'HANGUP');
-      }
-      executeLocalTeardown();
-    }
-
-    function handleRemoteHangup() {
-      const isCalling = !document.getElementById('screen-calling').classList.contains('hidden');
-      const isIncoming = !document.getElementById('screen-incoming').classList.contains('hidden');
-      const isActive = !document.getElementById('screen-active-call').classList.contains('hidden');
-      
-      if (activeCall || isCalling || isIncoming || isActive) {
-         showToast("Call ended");
-         executeLocalTeardown();
-      }
-    }
-
-    function toggleMuteMic() {
-      if (!localStream) return;
-      state.isMuted = !state.isMuted;
-      localStream.getAudioTracks().forEach(track => track.enabled = !state.isMuted);
-      
-      const btn = document.getElementById('btn-toggle-mic');
-      const icon = document.getElementById('icon-mic');
-      if (state.isMuted) {
-        btn.className = "w-14 h-14 rounded-full bg-red-600 flex items-center justify-center text-white transition";
-        icon.setAttribute('data-lucide', 'mic-off');
-      } else {
-        btn.className = "w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white transition";
-        icon.setAttribute('data-lucide', 'mic');
-      }
-      lucide.createIcons();
-    }
-
-    function toggleMuteCamera() {
-      if (!localStream) return;
-      state.isCamDisabled = !state.isCamDisabled;
-      localStream.getVideoTracks().forEach(track => track.enabled = !state.isCamDisabled);
-
-      const btn = document.getElementById('btn-toggle-camera');
-      const icon = document.getElementById('icon-camera');
-      if (state.isCamDisabled) {
-        btn.className = "w-14 h-14 rounded-full bg-red-600 flex items-center justify-center text-white transition";
-        icon.setAttribute('data-lucide', 'video-off');
-      } else {
-        btn.className = "w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white transition";
-        icon.setAttribute('data-lucide', 'video');
-      }
-      lucide.createIcons();
-    }
-
-    let ringbackIntervalId = null;
-    function simulateRingbackTone(start = true) {
-      if (!start) {
-        clearInterval(ringbackIntervalId);
-        return;
-      }
-      clearInterval(ringbackIntervalId);
-      ringbackIntervalId = setInterval(() => {
-        playTone(440, 480, 1.2);
-      }, 4000);
-      playTone(440, 480, 1.2);
-    }
-
-    let ringtoneIntervalId = null;
-    function simulateIncomingRingtone(start = true) {
-      if (!start) {
-        clearInterval(ringtoneIntervalId);
-        return;
-      }
-      clearInterval(ringtoneIntervalId);
-      ringtoneIntervalId = setInterval(() => {
-        playTone(400, 450, 0.4);
-        setTimeout(() => playTone(400, 450, 0.4), 600);
-      }, 3000);
-      playTone(400, 450, 0.4);
-      setTimeout(() => playTone(400, 450, 0.4), 600);
-    }
-
-    function copyMyNumber() {
-      if (myPhoneNumber) {
-        const tempInput = document.createElement('input');
-        tempInput.value = myPhoneNumber;
-        document.body.appendChild(tempInput);
-        tempInput.select();
-        document.execCommand('copy');
-        document.body.removeChild(tempInput);
-        showToast("Number copied.");
-      }
-    }
-
-    function loadNotificationOptionState() {
-      const toggle = document.getElementById('notification-toggle');
-      const isEnabled = localStorage.getItem('peervo_notifications_enabled') === 'true';
-      toggle.checked = isEnabled;
-      if (isEnabled) {
-        registerUnifiedServiceWorker();
-      }
-    }
-
-    function toggleNotifications(checkbox) {
-      if (checkbox.checked) {
-        Notification.requestPermission().then((permission) => {
-          runDiagnostics();
-          if (permission === 'granted') {
-            localStorage.setItem('peervo_notifications_enabled', 'true');
-            logDiag("Permission granted. Booting Unified Worker...");
-            registerUnifiedServiceWorker().then(() => {
-              configureFirebasePush();
-            });
-          } else {
-            checkbox.checked = false;
-            localStorage.setItem('peervo_notifications_enabled', 'false');
-            showToast("Notification permission denied.");
-            logDiag("Notification permission denied.");
-          }
-        });
-      } else {
-        localStorage.setItem('peervo_notifications_enabled', 'false');
-        unregisterServiceWorker();
-        showToast("Notifications disabled.");
-        runDiagnostics();
-      }
-    }
-
-    function registerUnifiedServiceWorker() {
-      if ('serviceWorker' in navigator) {
-        logDiag("Registering combined worker (sw.js)...");
-        return navigator.serviceWorker.register('./sw.js').then((registration) => {
-          logDiag("Unified worker registered successfully.");
-          runDiagnostics();
-          return registration;
-        }).catch((err) => {
-          logDiag("Unified Registration failed: " + err.message);
-        });
-      }
-      logDiag("Service Workers are unsupported.");
-      return Promise.reject();
-    }
-
-    function unregisterServiceWorker() {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          for (let registration of registrations) {
-            registration.unregister();
-            logDiag("Deregistered combined worker.");
-          }
-        });
-      }
-    }
-
-    async function configureFirebasePush() {
-      if (!isServerAvailable) {
-        logDiag("Push mapping skipped: server is offline.");
-        return;
-      }
-      if (!window.messaging) {
-        logDiag("FCM Messaging engine is not initialized.");
-        return;
-      }
-
-      try {
-        const registration = await navigator.serviceWorker.ready;
-        
-        const token = await window.getToken(window.messaging, {
-          serviceWorkerRegistration: registration,
-          vapidKey: window.fcmVapidKey
-        });
-
-        if (token) {
-          logDiag("Retrieved FCM Registration Token.");
-          
-          if (myPhoneNumber) {
-            await fetch(`${REGISTRY_SERVER_URL}/api/subscribe`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                number: myPhoneNumber,
-                token: token
-              })
-            });
-            logDiag("Mapped FCM Token to registration list.");
-          }
-        } else {
-          logDiag("Failed to extract active client token.");
-        }
-      } catch (err) {
-        logDiag("FCM registration failed: " + err.message);
-      }
-    }
-
-    function setupAppVisibilityListener() {
-      document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) {
-          logDiag("App active; suppressing redundant push messages.");
+        if (!state.isRetryLoopActive) {
+          handleRemoteHangup();
         }
       });
     }
