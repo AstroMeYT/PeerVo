@@ -277,6 +277,37 @@
               </div>
             </div>
           </div>
+
+          <!-- Notification & PWA Diagnostics Console -->
+          <div class="bg-m3-surface p-5 rounded-3xl border border-m3-outline/10 shadow-md">
+            <h4 class="text-xs font-semibold text-m3-primary uppercase tracking-wide mb-3 flex items-center gap-2">
+              <i data-lucide="shield-alert" class="w-4 h-4"></i> Diagnostics Console
+            </h4>
+            <div class="space-y-2 text-[11px]">
+              <div class="flex justify-between border-b border-m3-outline/5 pb-1">
+                <span class="text-slate-400">Secure Context (HTTPS):</span>
+                <span id="diag-secure" class="font-bold text-red-400">Checking...</span>
+              </div>
+              <div class="flex justify-between border-b border-m3-outline/5 pb-1">
+                <span class="text-slate-400">Service Worker Support:</span>
+                <span id="diag-sw-support" class="font-bold text-red-400">Checking...</span>
+              </div>
+              <div class="flex justify-between border-b border-m3-outline/5 pb-1">
+                <span class="text-slate-400">Notification Permission:</span>
+                <span id="diag-permission" class="font-bold text-red-400">Checking...</span>
+              </div>
+              <div class="flex justify-between border-b border-m3-outline/5 pb-1">
+                <span class="text-slate-400">Push Engine Support:</span>
+                <span id="diag-push-support" class="font-bold text-red-400">Checking...</span>
+              </div>
+              <div class="flex flex-col pt-1">
+                <span class="text-slate-400 mb-1">Last Log Message:</span>
+                <div id="diag-console-log" class="p-2 bg-m3-surfaceVariant rounded-lg font-mono text-[10px] text-amber-400 break-all leading-tight max-h-20 overflow-y-auto">
+                  Initializing...
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
       </main>
@@ -449,18 +480,58 @@
       renderLogs();
       setupServiceWorkerMessageHandler();
       checkForDeepLinkedCall();
+      runDiagnostics();
     });
+
+    function runDiagnostics() {
+      const isSecure = window.isSecureContext;
+      const swSupport = 'serviceWorker' in navigator;
+      const pushSupport = swSupport && ('PushManager' in window);
+      const permission = Notification.permission;
+
+      const diagSecure = document.getElementById('diag-secure');
+      const diagSw = document.getElementById('diag-sw-support');
+      const diagPermission = document.getElementById('diag-permission');
+      const diagPush = document.getElementById('diag-push-support');
+
+      if (diagSecure) {
+        diagSecure.textContent = isSecure ? "YES" : "NO (Restricts SW)";
+        diagSecure.className = isSecure ? "font-bold text-emerald-400" : "font-bold text-red-400";
+      }
+      if (diagSw) {
+        diagSw.textContent = swSupport ? "SUPPORTED" : "UNSUPPORTED";
+        diagSw.className = swSupport ? "font-bold text-emerald-400" : "font-bold text-red-400";
+      }
+      if (diagPermission) {
+        diagPermission.textContent = permission.toUpperCase();
+        diagPermission.className = permission === 'granted' ? "font-bold text-emerald-400" : "font-bold text-red-400";
+      }
+      if (diagPush) {
+        diagPush.textContent = pushSupport ? "SUPPORTED" : "UNSUPPORTED";
+        diagPush.className = pushSupport ? "font-bold text-emerald-400" : "font-bold text-red-400";
+      }
+    }
+
+    function logDiag(message) {
+      console.log("[PeerVo Diag]", message);
+      const logger = document.getElementById('diag-console-log');
+      if (logger) {
+        logger.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      }
+    }
 
     async function checkServerHealth() {
       try {
         const response = await fetch(`${REGISTRY_SERVER_URL}/api/status`, { signal: AbortSignal.timeout(1000) });
         if (response.ok) {
           isServerAvailable = true;
+          logDiag("Registry connection verified.");
         } else {
           throw new Error();
         }
       } catch (err) {
         isServerAvailable = false;
+        logDiag("Registry offline. Direct calling mode enabled.");
       }
     }
 
@@ -661,6 +732,19 @@
         const callerID = incomingCall.peer.replace('peervo-', '');
         const isVideoIncoming = incomingCall.options && incomingCall.options.metadata && incomingCall.options.metadata.video;
         state.isVideoCall = isVideoIncoming;
+
+        if (document.hidden && Notification.permission === 'granted') {
+          try {
+            new Notification('PeerVo - Incoming Call', {
+              body: `Incoming ${state.isVideoCall ? 'Video' : 'Audio'} Call from ${callerID}`,
+              icon: 'https://placehold.co/128x128/6366f1/ffffff?text=📞',
+              requireInteraction: true
+            });
+            logDiag("Fired fallback Local Notification.");
+          } catch (e) {
+            logDiag("Failed to fire fallback Local Notification: " + e.message);
+          }
+        }
 
         showIncomingCallScreen(callerID, isVideoIncoming);
       });
@@ -1211,8 +1295,10 @@
     function toggleNotifications(checkbox) {
       if (checkbox.checked) {
         Notification.requestPermission().then((permission) => {
+          runDiagnostics();
           if (permission === 'granted') {
             localStorage.setItem('peervo_notifications_enabled', 'true');
+            logDiag("Permission granted. Initializing registration...");
             registerServiceWorker().then(() => {
               configurePushNotifications();
             });
@@ -1220,12 +1306,91 @@
             checkbox.checked = false;
             localStorage.setItem('peervo_notifications_enabled', 'false');
             showToast("Notification permission denied.");
+            logDiag("Notification permission denied by user.");
           }
         });
       } else {
         localStorage.setItem('peervo_notifications_enabled', 'false');
         unregisterServiceWorker();
         showToast("Notifications disabled.");
+        logDiag("Notifications manually deactivated.");
+        runDiagnostics();
+      }
+    }
+
+    function registerServiceWorker() {
+      if ('serviceWorker' in navigator) {
+        logDiag("Attempting to register sw.js...");
+        return navigator.serviceWorker.register('./sw.js')
+          .then((registration) => {
+            logDiag("sw.js successfully registered. Active scope: " + registration.scope);
+            runDiagnostics();
+            return registration;
+          })
+          .catch((err) => {
+            logDiag("Registration failed: " + err.message);
+            showToast("Service Worker failed. Local app wrapper restriction?");
+          });
+      }
+      logDiag("Service Workers are completely unsupported in this context.");
+      return Promise.reject();
+    }
+
+    function unregisterServiceWorker() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (let registration of registrations) {
+            registration.unregister();
+            logDiag("Unregistered service worker scope: " + registration.scope);
+          }
+        });
+      }
+    }
+
+    async function configurePushNotifications() {
+      if (!isServerAvailable) {
+        logDiag("Push configuration skipped (Registry Server is offline).");
+        return;
+      }
+      if (!('serviceWorker' in navigator)) return;
+
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        if (!('pushManager' in registration)) {
+          logDiag("PushManager is blocked/disabled on this container.");
+          return;
+        }
+
+        const keyResp = await fetch(`${REGISTRY_SERVER_URL}/api/vapid-public-key`);
+        if (!keyResp.ok) throw new Error("Could not retrieve VAPID key");
+        const keyData = await keyResp.json();
+
+        if (!keyData.publicKey || keyData.publicKey.startsWith("INSTALL")) {
+          logDiag("VAPID missing on server registry. Install pywebpush on host.");
+          return;
+        }
+
+        const convertedKey = urlB64ToUint8Array(keyData.publicKey);
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedKey
+        });
+
+        logDiag("Successfully subscribed to background Web Push server.");
+
+        if (myPhoneNumber) {
+          await fetch(`${REGISTRY_SERVER_URL}/api/subscribe`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              number: myPhoneNumber,
+              subscription: subscription
+            })
+          });
+          logDiag("Registered Web Push subscription token with callee registry mapping.");
+        }
+      } catch (err) {
+        logDiag("Failed Web Push setup: " + err.message);
       }
     }
 

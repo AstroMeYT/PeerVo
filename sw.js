@@ -1,9 +1,7 @@
-const CACHE_NAME = 'peervo-v2';
+const CACHE_NAME = 'peervo-v3';
 const ASSETS_TO_CACHE = [
   '/',
-  '/index.html',
-  'https://cdn.tailwindcss.com',
-  'https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js'
+  '/index.html'
 ];
 
 // Install Event
@@ -11,6 +9,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[Service Worker] Pre-caching static assets');
+      // Use standard slice approach to prevent cache lockouts during local wrapper builds
       return cache.addAll(ASSETS_TO_CACHE).catch((err) => {
         console.warn('Pre-cache failed; running with network fallback.', err);
       });
@@ -33,11 +32,13 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
+  // Force active SW takeover immediately on load
   self.clients.claim();
 });
 
 // Fetch Network Requests Caching
 self.addEventListener('fetch', (event) => {
+  // Ignore API calls to allow direct WebRTC routing and push setups
   if (event.request.url.includes('/api/')) {
     return;
   }
