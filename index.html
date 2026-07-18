@@ -1342,17 +1342,27 @@
 
     function registerUnifiedServiceWorker() {
       if ('serviceWorker' in navigator) {
-        logDiag("Registering combined worker (sw.js)...");
-        // Using firebase-messaging-sw.js as the SINGLE service worker file for everything
-        return navigator.serviceWorker.register('./sw.js')
-          .then((registration) => {
-            logDiag("Unified worker registered successfully.");
-            runDiagnostics();
-            return registration;
-          })
-          .catch((err) => {
-            logDiag("Unified Registration failed: " + err.message);
-          });
+        logDiag("Checking for stale service workers...");
+        // Sweep and unregister old sw.js to prevent conflicts with the unified Firebase worker
+        return navigator.serviceWorker.getRegistrations().then((registrations) => {
+          let cleanPromises = [];
+          for (let reg of registrations) {
+            if (reg.active && reg.active.scriptURL.includes('/sw.js')) {
+              logDiag("Found stale sw.js background worker. Unregistering...");
+              cleanPromises.push(reg.unregister());
+            }
+          }
+          return Promise.all(cleanPromises);
+        }).then(() => {
+          logDiag("Registering combined worker (firebase-messaging-sw.js)...");
+          return navigator.serviceWorker.register('./firebase-messaging-sw.js');
+        }).then((registration) => {
+          logDiag("Unified worker registered successfully.");
+          runDiagnostics();
+          return registration;
+        }).catch((err) => {
+          logDiag("Unified Registration failed: " + err.message);
+        });
       }
       logDiag("Service Workers are unsupported.");
       return Promise.reject();
