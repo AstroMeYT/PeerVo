@@ -15,7 +15,6 @@ def after_request(response):
 
 DB_FILE = 'peervo_registry.db'
 
-# Try importing and initializing the official Firebase Admin SDK
 try:
     import firebase_admin
     from firebase_admin import credentials, messaging
@@ -57,7 +56,7 @@ def get_status():
         "status": "online",
         "service": "PeerVo FCM Signaling Registry",
         "firebase_active": FIREBASE_ADMIN_ACTIVE,
-        "version": "2.0.0"
+        "version": "2.1.0"
     }), 200
 
 @app.route('/api/register', methods=['POST'])
@@ -100,8 +99,8 @@ def subscribe_device():
     phone_number = data.get('number', '').strip()
     fcm_token = data.get('token', '').strip()
 
-    if not phone_number or not fcm_token:
-        return jsonify({"error": "Registration request requires phone number and token."}), 400
+    if not phone_number or not fcm_token or fcm_token in ['undefined', 'null', 'None', '']:
+        return jsonify({"error": "Registration request requires phone number and a valid token."}), 400
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -133,7 +132,7 @@ def trigger_call_push():
     conn.close()
 
     if row and row[0]:
-        target_token = row[0]
+        target_token = row[0].strip()
         
         if FIREBASE_ADMIN_ACTIVE:
             try:
@@ -159,9 +158,47 @@ def trigger_call_push():
                 response = messaging.send(message)
                 print(f"[PUSH] Message successfully sent to FCM. Dispatch tracking ID: {response}")
                 return jsonify({"success": True, "message": "FCM payload successfully delivered."}), 200
+            
+            except messaging.UnregisteredError:
+                # Catching dead or expired browser tokens and self-pruning the database.
+                print(f"[CLEANUP] Pruning expired or unregistered token for line {callee}.")
+                conn = sqlite3.connect(DB_FILE)
+                cursor = conn.cursor()
+                cursor.execute("UPDATE directory SET fcm_token = NULL WHERE phone_number = ?", (callee,))
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "error": "TokenExpired",
+                    "message": "The recipient's registration token has expired or is no longer valid. Stale record automatically pruned from registry."
+                }), 410
+
+            except messaging.SenderIdMismatchError:
+                # Occurs if your local serviceAccountKey.json is from a different project than your index.html/sw.js setup
+                print("[ERROR] SenderIdMismatchError: Client Sender ID doesn't match serviceAccountKey.json's project!")
+                return jsonify({
+                    "success": False,
+                    "error": "SenderIdMismatch",
+                    "message": "Project Mismatch! Your index.html config credentials and your server-side serviceAccountKey.json belong to different Firebase projects."
+                }), 403
+
+            except firebase_admin.exceptions.InvalidArgumentError as ex:
+                # Occurs if the token structure is modified, truncated, or invalid
+                print(f"[ERROR] InvalidArgumentError triggered: {ex}")
+                return jsonify({
+                    "success": False,
+                    "error": "InvalidArgument",
+                    "message": f"Google rejected call parameters or token format: {ex}"
+                }), 400
+
             except Exception as ex:
+                # General SDK handler
                 print(f"[ERROR] FCM push dispatch failed: {ex}")
-                return jsonify({"success": False, "error": f"FCM server error: {ex}"}), 500
+                return jsonify({
+                    "success": False,
+                    "error": "FCMDispatchFailure",
+                    "message": f"FCM Engine raised an internal error: {ex}"
+                }), 500
         else:
             return jsonify({"success": False, "message": "Server Firebase credentials unconfigured."}), 200
 
