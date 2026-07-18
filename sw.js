@@ -1,8 +1,7 @@
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-const CACHE_NAME = 'peervo-unified-v6';
-// Using relative paths so cache resolves correctly on GitHub Pages (/PeerVo/) and localhost
+const CACHE_NAME = 'peervo-unified-v7';
 const ASSETS_TO_CACHE = [
   './',
   './index.html'
@@ -55,7 +54,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 // -------------------------------------------------------------
-// PART 2: Firebase Cloud Messaging Configuration
+// Firebase Cloud Messaging Configuration
 // -------------------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyB4w6GX6iv9qvxZM0kGgwmrnpZg973Bqks",
@@ -68,7 +67,6 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
@@ -93,32 +91,30 @@ messaging.onBackgroundMessage((payload) => {
   }
 });
 
+// Handle notification click by navigating and focusing active windows
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const callerNumber = event.notification.data ? event.notification.data.callerNumber : '';
   const isVideo = event.notification.data ? event.notification.data.isVideo : false;
 
+  const basePath = self.location.pathname.substring(0, self.location.pathname.lastIndexOf('/') + 1);
+  const targetUrl = new URL(`${basePath}?incoming_caller=${callerNumber}&is_video=${isVideo}`, self.location.origin).href;
+
+  console.log('[Unified SW] Redirecting client destination to:', targetUrl);
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // 1. If a window is already running, focus and pass signal
+      // 1. If an active browser tab is already running, navigate it directly and focus it
       for (const client of windowClients) {
-        if ('focus' in client) {
-          return client.focus().then(() => {
-            client.postMessage({
-              type: 'ANSWER_PUSHED_CALL',
-              callerNumber: callerNumber,
-              isVideo: isVideo
-            });
+        if ('navigate' in client && 'focus' in client) {
+          return client.navigate(targetUrl).then((focusedClient) => {
+            if (focusedClient) return focusedClient.focus();
           });
         }
       }
 
-      // 2. Otherwise open a new window with a bulletproof absolute URL resolution
-      const basePath = self.location.pathname.substring(0, self.location.pathname.lastIndexOf('/') + 1);
-      const targetUrl = new URL(`${basePath}?incoming_caller=${callerNumber}&is_video=${isVideo}`, self.location.origin).href;
-
-      console.log('[Unified SW] Launching new window destination:', targetUrl);
+      // 2. If no tab is open, launch a new window natively
       if (clients.openWindow) {
         return clients.openWindow(targetUrl);
       }
@@ -200,7 +196,7 @@ eof
 </head>
 <body class="text-m3-neutralVariant h-full flex flex-col overflow-hidden">
 
-  <!-- Register Foreground SW listener immediately to avoid race conditions -->
+  <!-- Foreground Service Worker message handling -->
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (event) => {
@@ -212,7 +208,6 @@ eof
           if (typeof window.showIncomingCallScreen === "function") {
             window.showIncomingCallScreen(caller, isVideo);
           } else {
-            // Keep parameters in memory if app is booting up
             window.pendingDeepLink = { caller, isVideo };
           }
         }
@@ -286,7 +281,7 @@ eof
             </button>
           </div>
 
-          <!-- M3 Soft-Rounded Keypad -->
+          <!-- Keypad -->
           <div class="grid grid-cols-3 gap-y-4 gap-x-6 max-w-[280px] mx-auto mb-6">
             <button onclick="pressKey('1')" class="w-16 h-16 rounded-full bg-m3-surface hover:bg-m3-secondaryContainer active:scale-90 flex items-center justify-center transition">
               <span class="text-2xl font-semibold text-white">1</span>
@@ -389,7 +384,6 @@ eof
           </div>
 
           <div class="bg-m3-surface rounded-3xl overflow-hidden border border-m3-outline/10 divide-y divide-m3-outline/10 shadow-md">
-            
             <!-- Notifications Toggle -->
             <div class="p-4 flex items-center justify-between">
               <div class="flex items-center gap-3">
@@ -397,7 +391,7 @@ eof
                   <i data-lucide="bell" class="w-4 h-4"></i>
                 </div>
                 <div>
-                  <p class="font-semibold text-xs text-white">Notifications (Unified Worker)</p>
+                  <p class="font-semibold text-xs text-white">Notifications (sw.js)</p>
                   <p class="text-[10px] text-slate-400">Receive background calls via Firebase</p>
                 </div>
               </div>
@@ -460,7 +454,6 @@ eof
             </div>
           </div>
         </div>
-
       </main>
 
       <!-- Bottom Navigation bar -->
@@ -627,7 +620,7 @@ eof
           const caller = payload.data.caller;
           const isVideo = payload.data.isVideo === "true";
           state.isVideoCall = isVideo;
-          showIncomingCallScreen(caller, isVideo);
+          window.showIncomingCallScreen(caller, isVideo);
         }
       });
     }
@@ -653,6 +646,7 @@ eof
     let callTimeoutId = null;
     let callDurationSec = 0;
     let audioCtx = null;
+    let retryTimer = null; // Wake up retry interval handle
 
     const state = {
       isMuted: false,
@@ -661,8 +655,7 @@ eof
       activeView: 'dialer',
       outgoingTarget: null,       
       isRetryLoopActive: false,   
-      pendingAccept: false,
-      retryTimeoutId: null
+      pendingAccept: false
     };
 
     let contacts = JSON.parse(localStorage.getItem('peervo_contacts')) || [];
@@ -679,9 +672,8 @@ eof
       renderLogs();
       setupAppVisibilityListener();
       
-      // Process pending deep link from early handler or scan URL parameters
       if (window.pendingDeepLink) {
-        showIncomingCallScreen(window.pendingDeepLink.caller, window.pendingDeepLink.isVideo);
+        window.showIncomingCallScreen(window.pendingDeepLink.caller, window.pendingDeepLink.isVideo);
         window.pendingDeepLink = null;
       } else {
         checkForDeepLinkedCall();
@@ -980,7 +972,7 @@ eof
           } catch (err) {}
         }
 
-        // Prevent registration-level open events from overriding active call overlays
+        // Prevent registration open events from bouncing active call screens
         const incomingHidden = document.getElementById('screen-incoming').classList.contains('hidden');
         const callingHidden = document.getElementById('screen-calling').classList.contains('hidden');
         const activeCallHidden = document.getElementById('screen-active-call').classList.contains('hidden');
@@ -1017,45 +1009,64 @@ eof
         }
 
         if (err.type === 'peer-unavailable') {
-          logDiag("Target peer is offline. Retrying connection...");
-          const statusText = document.getElementById('calling-status-text');
-          if (statusText) statusText.textContent = "Waking up recipient... (Retrying)";
-          
-          if (state.isRetryLoopActive) {
-            clearTimeout(state.retryTimeoutId);
-            state.retryTimeoutId = setTimeout(() => {
-              const isCallingScreenVisible = !document.getElementById('screen-calling').classList.contains('hidden');
-              if (isCallingScreenVisible && state.isRetryLoopActive) {
-                logDiag("Retrying WebRTC handshake call stream...");
-                attemptCallConnection();
-              }
-            }, 3000);
-          }
+          logDiag("Target peer is offline. Wake-up retry interval handles call routing...");
         }
       });
 
       peer.on('connection', (conn) => {
         conn.on('data', (data) => {
           if (data && data.type === 'HANGUP') {
-             console.log("Remote peer requested explicit hangup.");
+             console.log("[PEERVO] Remote peer requested explicit hangup.");
              handleRemoteHangup();
           }
         });
       });
 
       peer.on('call', (incomingCall) => {
+        console.log("[PEERVO] WebRTC call received from: " + incomingCall.peer);
+
+        // STATE SYNCHRONIZATION: If caller's retry timer spammed another handle from the same peer,
+        // instantly dismantle the previous stale call thread to prevent ghost answer loops.
+        if (activeCall && activeCall.peer === incomingCall.peer) {
+          console.log("[PEERVO] Synchronizing: Replacing older handshake socket with newest retry instance.");
+          activeCall.off('stream');
+          activeCall.off('close');
+          activeCall.off('error');
+          activeCall.close();
+        }
+
         activeCall = incomingCall;
         const callerID = incomingCall.peer.replace('peervo-', '');
         const isVideoIncoming = incomingCall.options && incomingCall.options.metadata && incomingCall.options.metadata.video;
         state.isVideoCall = isVideoIncoming;
 
         if (state.pendingAccept) {
-          state.pendingAccept = false;
           acceptIncomingCall();
         } else {
-          showIncomingCallScreen(callerID, isVideoIncoming);
+          window.showIncomingCallScreen(callerID, isVideoIncoming);
         }
       });
+    }
+
+    function startRetryLoop(targetPhone) {
+      state.isRetryLoopActive = true;
+      state.outgoingTarget = targetPhone;
+
+      if (retryTimer) clearInterval(retryTimer);
+
+      // Fire once immediately, then retry every 4 seconds to wake up the receiver
+      attemptCallConnection();
+
+      retryTimer = setInterval(() => {
+        if (!state.isRetryLoopActive) {
+          clearInterval(retryTimer);
+          return;
+        }
+        console.log("[PEERVO] Dispatching wake-up call handshake...");
+        const statusText = document.getElementById('calling-status-text');
+        if (statusText) statusText.textContent = "Waking up recipient... (Retrying)";
+        attemptCallConnection();
+      }, 4000);
     }
 
     function attemptCallConnection() {
@@ -1268,8 +1279,6 @@ eof
       }
 
       state.isVideoCall = isVideo;
-      state.outgoingTarget = targetPhone; 
-      state.isRetryLoopActive = true;     
 
       const contact = contacts.find(c => c.phone === targetPhone);
       document.getElementById('calling-phone-display').textContent = formatPhone(targetPhone);
@@ -1278,8 +1287,6 @@ eof
 
       showScreen('screen-calling');
       simulateRingbackTone(true);
-
-      const targetPeerID = `peervo-${targetPhone}`;
 
       if (isServerAvailable) {
         fetch(`${REGISTRY_SERVER_URL}/api/call-alert`, {
@@ -1295,6 +1302,7 @@ eof
           audio: true
         });
 
+        // Safe exit if user hung up while we were requesting hardware access
         if (document.getElementById('screen-calling').classList.contains('hidden')) {
           if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
@@ -1303,12 +1311,8 @@ eof
           return;
         }
 
-        const outgoingCall = peer.call(targetPeerID, localStream, {
-          metadata: { video: isVideo }
-        });
-
-        activeCall = outgoingCall;
-        setupCallStreamHandlers(outgoingCall, targetPhone);
+        // Start waking retry loop
+        startRetryLoop(targetPhone);
         setupCallTimeout(targetPhone);
 
       } catch (err) {
@@ -1321,7 +1325,7 @@ eof
     function setupCallTimeout(remoteNumber) {
       clearTimeout(callTimeoutId);
       callTimeoutId = setTimeout(() => {
-        if (activeCall && !document.getElementById('screen-calling').classList.contains('hidden')) {
+        if (!document.getElementById('screen-calling').classList.contains('hidden')) {
           showToast("No answer.");
           addLog('missed', remoteNumber);
           hangUpCall();
@@ -1329,7 +1333,6 @@ eof
       }, 30000); 
     }
 
-    // Expose this globally so both module blocks and standard window scopes can open the call screens smoothly
     window.showIncomingCallScreen = function(callerNumber, isVideo) {
       const contact = contacts.find(c => c.phone === callerNumber);
       document.getElementById('incoming-phone-display').textContent = formatPhone(callerNumber);
@@ -1339,14 +1342,14 @@ eof
       showScreen('screen-incoming');
       simulateIncomingRingtone(true);
 
-      // PROACTIVE STREAM PRE-FETCHING: Get media access IMMEDIATELY on ring so answering is instantaneous
+      // PROACTIVE HARDWARE PRE-FETCH: Lock stream now so click-to-answer is completely lag-free
       prefetchLocalStream(isVideo);
     }
 
     async function prefetchLocalStream(isVideo) {
       if (localStream) return;
       try {
-        logDiag("Proactively pre-fetching local media stream during ring event...");
+        logDiag("Proactively pre-fetching local media stream...");
         localStream = await navigator.mediaDevices.getUserMedia({
           video: isVideo,
           audio: true
@@ -1358,8 +1361,12 @@ eof
     }
 
     async function acceptIncomingCall() {
-      // If the proactive prefetch failed or hasn't finished, resolve media access instantly
+      // Safely ensure ringtone stops looping
+      simulateIncomingRingtone(false);
+
       if (!localStream) {
+        state.pendingAccept = true;
+        document.getElementById('incoming-type-text').textContent = "Acquiring hardware...";
         try {
           localStream = await navigator.mediaDevices.getUserMedia({
             video: state.isVideoCall,
@@ -1372,13 +1379,13 @@ eof
         }
       }
 
-      simulateIncomingRingtone(false);
-
       if (!activeCall) {
         state.pendingAccept = true;
-        document.getElementById('incoming-type-text').textContent = "Connecting call...";
+        document.getElementById('incoming-type-text').textContent = "Connecting line...";
         return;
       }
+
+      state.pendingAccept = false;
 
       try {
         activeCall.answer(localStream);
@@ -1388,6 +1395,7 @@ eof
         showActiveCallScreen();
 
       } catch (err) {
+        console.error("[PEERVO] Answer hook crash:", err);
         showToast("Failed to answer call.");
         hangUpCall();
       }
@@ -1396,21 +1404,29 @@ eof
     function declineIncomingCall() {
       state.pendingAccept = false;
       simulateIncomingRingtone(false);
+      
       if (activeCall) {
         const callerPhone = activeCall.peer.replace('peervo-', '');
         addLog('missed', callerPhone);
-        sendControlSignal(activeCall.peer, 'HANGUP');
+        try {
+          sendControlSignal(activeCall.peer, 'HANGUP');
+        } catch (e) {}
       }
       executeLocalTeardown();
     }
 
     function sendControlSignal(targetPeerId, signalType) {
       if (peer && !peer.destroyed) {
-        const signalConn = peer.connect(targetPeerId);
-        signalConn.on('open', () => {
-          signalConn.send({ type: signalType });
-          setTimeout(() => signalConn.close(), 500);
-        });
+        try {
+          const signalConn = peer.connect(targetPeerId);
+          signalConn.on('open', () => {
+            signalConn.send({ type: signalType });
+            // Keep active long enough for packet transmission buffer to flush cleanly
+            setTimeout(() => signalConn.close(), 100);
+          });
+        } catch (err) {
+          console.warn("[PEERVO] Control packet failed to send:", err);
+        }
       }
     }
 
@@ -1442,7 +1458,13 @@ eof
         simulateRingbackTone(false);
         simulateIncomingRingtone(false);
         
+        // Disable retries: we have established a real streaming peer bridge!
         state.isRetryLoopActive = false;
+        if (retryTimer) {
+          clearInterval(retryTimer);
+          retryTimer = null;
+        }
+
         showActiveCallScreen();
 
         const remoteVid = document.getElementById('remote-video');
@@ -1604,7 +1626,9 @@ eof
           addLog('missed', remoteNumber);
         }
         
-        sendControlSignal(activeCall.peer, 'HANGUP');
+        try {
+          sendControlSignal(activeCall.peer, 'HANGUP');
+        } catch (e) {}
       }
       executeLocalTeardown();
     }
@@ -1627,7 +1651,10 @@ eof
       state.outgoingTarget = null;
       state.pendingAccept = false;
       
-      clearTimeout(state.retryTimeoutId);
+      if (retryTimer) {
+        clearInterval(retryTimer);
+        retryTimer = null;
+      }
       clearTimeout(callTimeoutId);
       clearInterval(activeCallTimerId);
       
@@ -1635,7 +1662,9 @@ eof
       simulateIncomingRingtone(false);
 
       if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
+        try {
+          localStream.getTracks().forEach(track => track.stop());
+        } catch (e) {}
         localStream = null;
       }
 
@@ -1644,7 +1673,12 @@ eof
       if (remoteVid) remoteVid.srcObject = null;
       if (localVid) localVid.srcObject = null;
 
-      activeCall = null;
+      if (activeCall) {
+        try {
+          activeCall.close();
+        } catch (e) {}
+        activeCall = null;
+      }
       callDurationSec = 0;
 
       navigateTo(state.activeView);
@@ -1730,7 +1764,6 @@ eof
       showToast("Line deregistered.");
     }
 
-    // Register active unified Service Worker under the official custom name 'sw.js'
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
@@ -1746,12 +1779,3 @@ eof
   </script>
 </body>
 </html>
-```
-eof
-
-### Summary of Changes:
-1. **Instant Response Mechanism (`prefetchLocalStream`)**: Implemented background media stream pre-fetching inside `window.showIncomingCallScreen`. The camera/microphone permission is fetched the moment the phone starts ringing, completely bypassing the 1.5–3 second hardware initialization delay when clicking Answer.
-2. **Absolute Destination Redirect (`sw.js`)**: Upgraded `clients.openWindow` in your background worker click events to dynamically parse and compile absolute URL objects using `self.location.origin`, completely resolving subdirectory and domain routing issues on GitHub Pages.
-3. **Synchronized Retry Controls**: Cleanly isolated caller and callee handshake loops to prevent active signaling channels from being clambered or closed unexpectedly.
-
-Your system is now ready, optimized, and fully synchronized! Give it a test run, and let me know how it goes.

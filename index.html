@@ -1614,11 +1614,3 @@
   </script>
 </body>
 </html>
-```
-eof
-
-### Summary of Changes:
-1. **Restored Missing Function:** Re-implemented `setupAppVisibilityListener()` to dynamically trigger WebRTC/PeerJS signaling reconnect cycles whenever a user brings their background browser tab back into focus.
-2. **Fixed Syntax & Runtime Integrity:** Safely encapsulated state hooks and Firebase token mappings inside the main client logic block to guarantee smooth and bug-free execution on mobile, desktop, and standard browser sandboxes.
-
-The file compiles perfectly now with no runtime reference errors! Give it a spin.
