@@ -3,7 +3,7 @@
       "target": {
         "namespace": "android_app",
         "package_name": "com.peervo.app",
-        "sha256_cert_fingerprints": ["743a6483e95aef7b8ed87c33f5039771505ba792651ae30a58ecf0f2dc0a2e72"]
+        "sha256_cert_fingerprints": ["C0:74:D0:BF:FC:57:DE:F5:C3:2A:56:AF:DC:DB:AD:50:8C:A0:67:92:C3:F1:DB:4C:C9:C5:AD:64:CF:3B:C1:C8"]
       }
     }]
     
