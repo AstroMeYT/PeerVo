@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>PeerVo - Firebase P2P Phone</title>
+  <title>PeerVo - PWA Phone</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -246,7 +246,7 @@
                   <i data-lucide="bell" class="w-4 h-4"></i>
                 </div>
                 <div>
-                  <p class="font-semibold text-xs text-white">FCM Push Notifications</p>
+                  <p class="font-semibold text-xs text-white">Notifications (Unified Worker)</p>
                   <p class="text-[10px] text-slate-400">Receive background calls via Firebase</p>
                 </div>
               </div>
@@ -281,7 +281,7 @@
           <!-- Notification & PWA Diagnostics Console -->
           <div class="bg-m3-surface p-5 rounded-3xl border border-m3-outline/10 shadow-md">
             <h4 class="text-xs font-semibold text-m3-primary uppercase tracking-wide mb-3 flex items-center gap-2">
-              <i data-lucide="shield-alert" class="w-4 h-4"></i> FCM Diagnostics Console
+              <i data-lucide="shield-alert" class="w-4 h-4"></i> Unified Diagnostics Console
             </h4>
             <div class="space-y-2 text-[11px]">
               <div class="flex justify-between border-b border-m3-outline/5 pb-1">
@@ -297,7 +297,7 @@
                 <span id="diag-permission" class="font-bold text-red-400">Checking...</span>
               </div>
               <div class="flex justify-between border-b border-m3-outline/5 pb-1">
-                <span class="text-slate-400">FCM Push Engine Support:</span>
+                <span class="text-slate-400">Unified Worker Registered:</span>
                 <span id="diag-push-support" class="font-bold text-red-400">Checking...</span>
               </div>
               <div class="flex flex-col pt-1">
@@ -448,45 +448,46 @@
     // Import modular Firebase SDKs
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
 
-    // IMPORTANT: Replace this config with your values from the Firebase Console (Project Settings > General)
+    // Live Config block
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyB4w6GX6iv9qvxZM0kGgwmrnpZg973Bqks",
+      authDomain: "peervo-fcm.firebaseapp.com",
+      projectId: "peervo-fcm",
+      storageBucket: "peervo-fcm.firebasestorage.app",
+      messagingSenderId: "549988903087",
+      appId: "1:549988903087:web:0210539decb6f78a2f4c5a",
+      measurementId: "G-31QC5BZ31D"
     };
 
-    // Replace with your Web Push Public VAPID Key (Project Settings > Cloud Messaging > Web Push Certificates)
-    const VAPID_KEY = "YOUR_PUBLIC_VAPID_KEY";
+    // VAPID Web Push Key
+    const VAPID_KEY = "BGwVYDLSXkfTOVYpNWbm5jd22MoUBNRjQYwjDd09rKNmQHMjQ50N4tbDwsKa-rnGBFOt36H2hXHVQd-r_IALmmA";
 
     let firebaseApp;
+    let analytics;
     let messaging;
 
-    // Initialize Firebase if settings exist
-    if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+    if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
       firebaseApp = initializeApp(firebaseConfig);
+      analytics = getAnalytics(firebaseApp);
       messaging = getMessaging(firebaseApp);
       
-      // Handle foreground messages if app is active
       onMessage(messaging, (payload) => {
         logDiag("Foreground push notification caught.");
         if (payload.data && payload.data.type === 'INCOMING_CALL') {
           const caller = payload.data.caller;
           const isVideo = payload.data.isVideo === "true";
           state.isVideoCall = isVideo;
-          // Set call object setup (waiting for dynamic Peer connection match)
           showIncomingCallScreen(caller, isVideo);
         }
       });
     } else {
-      console.warn("Firebase not initialized: Please supply credentials inside config.");
+      console.warn("Firebase not configured correctly.");
     }
 
-    // Export variables so the standard vanilla script can access them
     window.firebaseApp = firebaseApp;
+    window.analytics = analytics;
     window.messaging = messaging;
     window.fcmVapidKey = VAPID_KEY;
   </script>
@@ -515,7 +516,6 @@
     let contacts = JSON.parse(localStorage.getItem('peervo_contacts')) || [];
     let callLogs = JSON.parse(localStorage.getItem('peervo_logs')) || [];
 
-    // On Load Initialization
     window.addEventListener('load', () => {
       lucide.createIcons();
       document.getElementById('settings-server-url').value = REGISTRY_SERVER_URL;
@@ -560,7 +560,7 @@
     }
 
     function logDiag(message) {
-      console.log("[PeerVo Diag]", message);
+      console.log("[PeerVo Unified SW]", message);
       const logger = document.getElementById('diag-console-log');
       if (logger) {
         logger.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
@@ -624,7 +624,6 @@
       setTimeout(() => { toast.classList.add('hidden'); }, 300);
     }
 
-    // Comprehensive Screen Router
     function showScreen(screenId) {
       const screens = ['screen-register', 'screen-app', 'screen-calling', 'screen-incoming', 'screen-active-call'];
       screens.forEach(id => {
@@ -783,7 +782,6 @@
       });
     }
 
-    // Audio Tone Generator System
     function playTone(freq1, freq2, duration) {
       try {
         if (!audioCtx) {
@@ -987,7 +985,6 @@
 
       const targetPeerID = `peervo-${targetPhone}`;
 
-      // Dispatch Firebase Push Alert through Python backend (Non-blocking background promise)
       if (isServerAvailable) {
         fetch(`${REGISTRY_SERVER_URL}/api/call-alert`, {
           method: 'POST',
@@ -1120,7 +1117,6 @@
         remoteVid.srcObject = remoteStream;
         localVid.srcObject = localStream;
 
-        // Bypassing autoplay restrictions
         setTimeout(() => {
           if (remoteVid.srcObject) remoteVid.play().catch(e => console.warn("Remote play blocked:", e));
           if (localVid.srcObject) localVid.play().catch(e => console.warn("Local play blocked:", e));
@@ -1269,7 +1265,6 @@
       lucide.createIcons();
     }
 
-    // Audio Simulators
     let ringbackIntervalId = null;
     function simulateRingbackTone(start = true) {
       if (!start) {
@@ -1315,7 +1310,7 @@
       const isEnabled = localStorage.getItem('peervo_notifications_enabled') === 'true';
       toggle.checked = isEnabled;
       if (isEnabled) {
-        registerFirebaseServiceWorker();
+        registerUnifiedServiceWorker();
       }
     }
 
@@ -1325,8 +1320,8 @@
           runDiagnostics();
           if (permission === 'granted') {
             localStorage.setItem('peervo_notifications_enabled', 'true');
-            logDiag("Permission granted. Booting Service Worker...");
-            registerFirebaseServiceWorker().then(() => {
+            logDiag("Permission granted. Booting Unified Worker...");
+            registerUnifiedServiceWorker().then(() => {
               configureFirebasePush();
             });
           } else {
@@ -1344,17 +1339,18 @@
       }
     }
 
-    function registerFirebaseServiceWorker() {
+    function registerUnifiedServiceWorker() {
       if ('serviceWorker' in navigator) {
-        logDiag("Registering firebase-messaging-sw.js...");
+        logDiag("Registering combined worker (firebase-messaging-sw.js)...");
+        // Using firebase-messaging-sw.js as the SINGLE service worker file for everything
         return navigator.serviceWorker.register('./firebase-messaging-sw.js')
           .then((registration) => {
-            logDiag("Service worker registered. Scope: " + registration.scope);
+            logDiag("Unified worker registered successfully.");
             runDiagnostics();
             return registration;
           })
           .catch((err) => {
-            logDiag("Registration failed: " + err.message);
+            logDiag("Unified Registration failed: " + err.message);
           });
       }
       logDiag("Service Workers are unsupported.");
@@ -1366,7 +1362,7 @@
         navigator.serviceWorker.getRegistrations().then((registrations) => {
           for (let registration of registrations) {
             registration.unregister();
-            logDiag("Deregistered service worker.");
+            logDiag("Deregistered combined worker.");
           }
         });
       }
@@ -1378,14 +1374,13 @@
         return;
       }
       if (!window.messaging) {
-        logDiag("FCM Messaging engine is not initialized. Supply credentials.");
+        logDiag("FCM Messaging engine is not initialized.");
         return;
       }
 
       try {
         const registration = await navigator.serviceWorker.ready;
         
-        // Fetch unique Firebase registration token
         const token = await window.getToken(window.messaging, {
           serviceWorkerRegistration: registration,
           vapidKey: window.fcmVapidKey
@@ -1395,7 +1390,6 @@
           logDiag("Retrieved FCM Registration Token.");
           
           if (myPhoneNumber) {
-            // Send FCM token mapping directly to python registry server
             await fetch(`${REGISTRY_SERVER_URL}/api/subscribe`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

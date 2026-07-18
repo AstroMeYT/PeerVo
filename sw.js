@@ -1,14 +1,73 @@
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-// IMPORTANT: Replace this config with your values from the Firebase Console (Project Settings > General)
+// -------------------------------------------------------------
+// PART 1: PWA Static Cache Implementation (Offline persistence)
+// -------------------------------------------------------------
+const CACHE_NAME = 'peervo-unified-v4';
+const ASSETS_TO_CACHE = [
+  '/',
+  '/index.html'
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log('[Unified SW] Pre-caching static assets for offline performance');
+      return cache.addAll(ASSETS_TO_CACHE).catch((err) => {
+        console.warn('Pre-cache failed; running with network fallback.', err);
+      });
+    })
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.map((key) => {
+          if (key !== CACHE_NAME) {
+            console.log('[Unified SW] Clearing old cached assets', key);
+            return caches.delete(key);
+          }
+        })
+      );
+    })
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', (event) => {
+  // Ignore API registry requests so signaling doesn't cache stale data
+  if (event.request.url.includes('/api/')) {
+    return;
+  }
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(event.request).catch(() => {
+        if (event.request.mode === 'navigate') {
+          return caches.match('/index.html');
+        }
+      });
+    })
+  );
+});
+
+// -------------------------------------------------------------
+// PART 2: Firebase Cloud Messaging Configuration
+// -------------------------------------------------------------
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyB4w6GX6iv9qvxZM0kGgwmrnpZg973Bqks",
+  authDomain: "peervo-fcm.firebaseapp.com",
+  projectId: "peervo-fcm",
+  storageBucket: "peervo-fcm.firebasestorage.app",
+  messagingSenderId: "549988903087",
+  appId: "1:549988903087:web:0210539decb6f78a2f4c5a",
+  measurementId: "G-31QC5BZ31D"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -16,9 +75,8 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  console.log('[Service Worker] Background Push caught: ', payload);
+  console.log('[Unified SW] Background Push received:', payload);
 
-  // If the push matches PeerVo incoming call signaling schemas
   if (payload.data && payload.data.type === 'INCOMING_CALL') {
     const caller = payload.data.caller || 'Unknown Number';
     const isVideo = payload.data.isVideo === "true" ? 'Video' : 'Audio';
@@ -38,7 +96,6 @@ messaging.onBackgroundMessage((payload) => {
   }
 });
 
-// Capture notification clicks and restore/reopen window focus
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -46,11 +103,10 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // 1. Focus on an existing open tab
+      // 1. If a window is already running, focus and pass signal
       for (const client of windowClients) {
         if ('focus' in client) {
           return client.focus().then(() => {
-            // Signal directly through client context to run the answer sequence
             client.postMessage({
               type: 'ANSWER_PUSHED_CALL',
               callerNumber: callerNumber
@@ -58,7 +114,7 @@ self.addEventListener('notificationclick', (event) => {
           });
         }
       }
-      // 2. Or launch a clean deep-linked tab
+      // 2. Otherwise open a new window deep-linking caller parameter
       if (clients.openWindow) {
         return clients.openWindow(`/?incoming_caller=${callerNumber}`);
       }
