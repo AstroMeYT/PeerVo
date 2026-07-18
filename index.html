@@ -939,40 +939,6 @@
           console.warn("Central Registry lookup failure. Proceeding via direct peer mapping.");
         }
       }
-
-      document.getElementById('calling-status-text').textContent = "Ringing...";
-
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-          video: isVideo,
-          audio: true
-        });
-
-        simulateRingbackTone();
-
-        const outgoingCall = peer.call(targetPeerID, localStream, {
-          metadata: { video: isVideo }
-        });
-
-        activeCall = outgoingCall;
-        setupCallStreamHandlers(outgoingCall, targetPhone);
-
-      } catch (err) {
-        console.error("Critical stream error: ", err);
-        showToast("Line connection rejected (Check Mic/Camera permissions).");
-        hangUpCall();
-      }
-    }
-
-    function showIncomingCallScreen(callerNumber, isVideo) {
-      const contact = contacts.find(c => c.phone === callerNumber);
-      
-      document.getElementById('incoming-phone-display').textContent = formatPhone(callerNumber);
-      document.getElementById('incoming-name-display').textContent = contact ? contact.name : "Unrecognized ID";
-      document.getElementById('incoming-type-text').textContent = `Incoming PeerVo ${isVideo ? 'Video' : 'Audio'} Call`;
-      
-      showScreen('screen-incoming');
-      simulateIncomingRingtone(true);
     }
 
     async function acceptIncomingCall() {
@@ -1010,6 +976,27 @@
     }
 
     function setupCallStreamHandlers(callObj, remoteNumber) {
+      // Watch raw RTCPeerConnection events to instantly detect when the remote peer destroys the link
+      if (callObj.peerConnection) {
+        const pc = callObj.peerConnection;
+        const checkConnectionDrop = () => {
+          const isDisconnected = 
+            pc.iceConnectionState === 'disconnected' || 
+            pc.iceConnectionState === 'failed' || 
+            pc.iceConnectionState === 'closed' ||
+            pc.connectionState === 'disconnected' || 
+            pc.connectionState === 'failed' || 
+            pc.connectionState === 'closed';
+
+          if (isDisconnected) {
+            handleCallClosed(remoteNumber);
+          }
+        };
+
+        pc.addEventListener('iceconnectionstatechange', checkConnectionDrop);
+        pc.addEventListener('connectionstatechange', checkConnectionDrop);
+      }
+
       callObj.on('stream', (remoteStream) => {
         simulateRingbackTone(false);
         showActiveCallScreen();
@@ -1019,6 +1006,20 @@
 
         remoteVid.srcObject = remoteStream;
         localVid.srcObject = localStream;
+
+        // Fallback: If remote stream state or tracks expire/stop, tear down call
+        remoteStream.addEventListener('inactive', () => {
+          handleCallClosed(remoteNumber);
+        });
+
+        remoteStream.getTracks().forEach(track => {
+          track.addEventListener('ended', () => {
+            const allEnded = remoteStream.getTracks().every(t => t.readyState === 'ended');
+            if (allEnded) {
+              handleCallClosed(remoteNumber);
+            }
+          });
+        });
 
         const audioIndicator = document.getElementById('audio-call-indicator');
         const localVideoCont = document.getElementById('local-video-container');
