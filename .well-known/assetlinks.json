@@ -1,0 +1,9 @@
+    [{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.peervo.app",
+        "sha256_cert_fingerprints": ["743a6483e95aef7b8ed87c33f5039771505ba792651ae30a58ecf0f2dc0a2e72"]
+      }
+    }]
+    
