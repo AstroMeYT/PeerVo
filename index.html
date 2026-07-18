@@ -69,8 +69,8 @@
 </head>
 <body class="text-m3-neutralVariant h-full flex flex-col overflow-hidden">
 
+  <!-- Foreground Service Worker message handling -->
   <script>
-    // Process early Service Worker background activation signals
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data && event.data.type === 'ANSWER_PUSHED_CALL') {
@@ -81,7 +81,6 @@
           if (typeof window.showIncomingCallScreen === "function") {
             window.showIncomingCallScreen(caller, isVideo);
           } else {
-            // Store early signal if app is still booting
             window.pendingDeepLink = { caller, isVideo };
           }
         }
@@ -155,7 +154,7 @@
             </button>
           </div>
 
-          <!-- M3 Soft-Rounded Keypad -->
+          <!-- Keypad -->
           <div class="grid grid-cols-3 gap-y-4 gap-x-6 max-w-[280px] mx-auto mb-6">
             <button onclick="pressKey('1')" class="w-16 h-16 rounded-full bg-m3-surface hover:bg-m3-secondaryContainer active:scale-90 flex items-center justify-center transition">
               <span class="text-2xl font-semibold text-white">1</span>
@@ -258,7 +257,6 @@
           </div>
 
           <div class="bg-m3-surface rounded-3xl overflow-hidden border border-m3-outline/10 divide-y divide-m3-outline/10 shadow-md">
-            
             <!-- Notifications Toggle -->
             <div class="p-4 flex items-center justify-between">
               <div class="flex items-center gap-3">
@@ -266,7 +264,7 @@
                   <i data-lucide="bell" class="w-4 h-4"></i>
                 </div>
                 <div>
-                  <p class="font-semibold text-xs text-white">Notifications (Unified Worker)</p>
+                  <p class="font-semibold text-xs text-white">Notifications (sw.js)</p>
                   <p class="text-[10px] text-slate-400">Receive background calls via Firebase</p>
                 </div>
               </div>
@@ -329,7 +327,6 @@
             </div>
           </div>
         </div>
-
       </main>
 
       <!-- Bottom Navigation bar -->
@@ -531,7 +528,8 @@
       outgoingTarget: null,       
       isRetryLoopActive: false,   
       pendingAccept: false,
-      retryTimeoutId: null
+      retryTimeoutId: null,
+      fallbackCallId: null
     };
 
     let contacts = JSON.parse(localStorage.getItem('peervo_contacts')) || [];
@@ -548,7 +546,6 @@
       renderLogs();
       setupAppVisibilityListener();
       
-      // Process pending deep link from early handler or scan URL parameters
       if (window.pendingDeepLink) {
         window.showIncomingCallScreen(window.pendingDeepLink.caller, window.pendingDeepLink.isVideo);
         window.pendingDeepLink = null;
@@ -849,7 +846,6 @@
           } catch (err) {}
         }
 
-        // Prevent registration-level open events from overriding active call overlays
         const incomingHidden = document.getElementById('screen-incoming').classList.contains('hidden');
         const callingHidden = document.getElementById('screen-calling').classList.contains('hidden');
         const activeCallHidden = document.getElementById('screen-active-call').classList.contains('hidden');
@@ -913,10 +909,26 @@
       });
 
       peer.on('call', (incomingCall) => {
-        activeCall = incomingCall;
         const callerID = incomingCall.peer.replace('peervo-', '');
         const isVideoIncoming = incomingCall.options && incomingCall.options.metadata && incomingCall.options.metadata.video;
         state.isVideoCall = isVideoIncoming;
+
+        // Double-Bridge Auto-Accept: if caller is actively trying to reach this callee, bridge instantly!
+        if (state.isRetryLoopActive && callerID === state.outgoingTarget) {
+          logDiag("Received auto-handshake callback! Merging streams immediately...");
+          state.isRetryLoopActive = false;
+          clearTimeout(state.retryTimeoutId);
+          clearTimeout(callTimeoutId);
+          simulateRingbackTone(false);
+
+          activeCall = incomingCall;
+          activeCall.answer(localStream);
+          setupCallStreamHandlers(activeCall, callerID);
+          showActiveCallScreen();
+          return;
+        }
+
+        activeCall = incomingCall;
 
         if (state.pendingAccept) {
           state.pendingAccept = false;
@@ -935,14 +947,20 @@
         activeCall.off('stream');
         activeCall.off('close');
         activeCall.off('error');
-        activeCall.close();
+        try {
+          activeCall.close();
+        } catch (e) {}
       }
       
-      const outgoingCall = peer.call(targetPeerID, localStream, {
-        metadata: { video: state.isVideoCall }
-      });
-      activeCall = outgoingCall;
-      setupCallStreamHandlers(outgoingCall, state.outgoingTarget);
+      try {
+        const outgoingCall = peer.call(targetPeerID, localStream, {
+          metadata: { video: state.isVideoCall }
+        });
+        activeCall = outgoingCall;
+        setupCallStreamHandlers(outgoingCall, state.outgoingTarget);
+      } catch (err) {
+        logDiag("Failed to initiate direct call handler: " + err.message);
+      }
     }
 
     function playTone(freq1, freq2, duration) {
@@ -1198,7 +1216,6 @@
       }, 30000); 
     }
 
-    // Expose this globally so both module blocks and standard window scopes can open the call screens smoothly
     window.showIncomingCallScreen = function(callerNumber, isVideo) {
       const contact = contacts.find(c => c.phone === callerNumber);
       document.getElementById('incoming-phone-display').textContent = formatPhone(callerNumber);
@@ -1208,7 +1225,6 @@
       showScreen('screen-incoming');
       simulateIncomingRingtone(true);
 
-      // PROACTIVE STREAM PRE-FETCHING: Get media access IMMEDIATELY on ring so answering is instantaneous
       prefetchLocalStream(isVideo);
     }
 
@@ -1227,7 +1243,6 @@
     }
 
     async function acceptIncomingCall() {
-      // If the proactive prefetch failed or hasn't finished, resolve media access instantly
       if (!localStream) {
         try {
           localStream = await navigator.mediaDevices.getUserMedia({
@@ -1246,8 +1261,25 @@
       if (!activeCall) {
         state.pendingAccept = true;
         document.getElementById('incoming-type-text').textContent = "Connecting call...";
+        
+        // Double-Bridge Reverse Handshake: if call doesn't connect in 4s, place outbound back-bridge
+        const deepLinkedCaller = new URLSearchParams(window.location.search).get('incoming_caller');
+        if (deepLinkedCaller && deepLinkedCaller.length === 10) {
+          clearTimeout(state.fallbackCallId);
+          state.fallbackCallId = setTimeout(() => {
+            if (state.pendingAccept && !activeCall) {
+              logDiag("Bridge timeout. Initiating dynamic reverse call bridge...");
+              document.getElementById('incoming-type-text').textContent = "Bridging line...";
+              state.pendingAccept = false;
+              dialAndCall(deepLinkedCaller, state.isVideoCall);
+            }
+          }, 4000);
+        }
         return;
       }
+
+      state.pendingAccept = false;
+      clearTimeout(state.fallbackCallId);
 
       try {
         activeCall.answer(localStream);
@@ -1264,6 +1296,7 @@
 
     function declineIncomingCall() {
       state.pendingAccept = false;
+      clearTimeout(state.fallbackCallId);
       simulateIncomingRingtone(false);
       if (activeCall) {
         const callerPhone = activeCall.peer.replace('peervo-', '');
@@ -1308,6 +1341,7 @@
 
       callObj.on('stream', (remoteStream) => {
         clearTimeout(callTimeoutId);
+        clearTimeout(state.fallbackCallId);
         simulateRingbackTone(false);
         simulateIncomingRingtone(false);
         
@@ -1464,6 +1498,7 @@
 
     function hangUpCall() {
       state.pendingAccept = false;
+      clearTimeout(state.fallbackCallId);
       if (activeCall) {
         const remoteNumber = activeCall.peer.replace('peervo-', '');
         
@@ -1498,6 +1533,7 @@
       
       clearTimeout(state.retryTimeoutId);
       clearTimeout(callTimeoutId);
+      clearTimeout(state.fallbackCallId);
       clearInterval(activeCallTimerId);
       
       simulateRingbackTone(false);
