@@ -822,6 +822,10 @@
       const targetPeerID = `peervo-${state.outgoingTarget}`;
       
       if (activeCall) {
+        // Prevent close events from triggering hangup teardowns during retry cycles
+        activeCall.off('stream');
+        activeCall.off('close');
+        activeCall.off('error');
         activeCall.close();
       }
       
@@ -1099,6 +1103,20 @@
     async function acceptIncomingCall() {
       simulateIncomingRingtone(false);
       
+      // Request media permissions immediately so localStream is prepared for the incoming handshake
+      if (!localStream) {
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({
+            video: state.isVideoCall,
+            audio: true
+          });
+        } catch (err) {
+          showToast("Mic/camera unavailable.");
+          hangUpCall();
+          return;
+        }
+      }
+
       if (!activeCall) {
         // Handshake stream hasn't arrived yet; set a pending flag to auto-answer upon receipt
         state.pendingAccept = true;
@@ -1107,11 +1125,6 @@
       }
 
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-          video: state.isVideoCall,
-          audio: true
-        });
-
         activeCall.answer(localStream);
         const callerPhone = activeCall.peer.replace('peervo-', '');
         
@@ -1119,7 +1132,7 @@
         showActiveCallScreen();
 
       } catch (err) {
-        showToast("Mic/camera unavailable.");
+        showToast("Failed to answer call.");
         hangUpCall();
       }
     }
@@ -1502,7 +1515,7 @@
         // Clear the URL path parameter dynamically to avoid infinite dialing loops on browser refreshes
         window.history.replaceState({}, document.title, window.location.pathname);
         
-        showToast(`Auto-answering call from ${formatPhone(incomingCaller)}...`);
+        showToast(`Incoming call from ${formatPhone(incomingCaller)}`);
         logDiag(`Deep-link startup detection: routing call screen for ${incomingCaller}`);
         
         state.isVideoCall = (isVideoParam === 'true');
