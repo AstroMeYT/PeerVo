@@ -133,11 +133,6 @@
               <span class="font-bold tracking-wide text-white text-sm">PeerVo</span>
             </div>
           </div>
-          <!-- Status Pill -->
-          <div class="flex items-center gap-1.5 px-3 py-1 bg-m3-surface rounded-full text-[11px] border border-m3-outline/15" id="status-chip">
-            <span class="w-1.5 h-1.5 rounded-full bg-amber-500" id="status-indicator-dot"></span>
-            <span id="connection-status" class="text-slate-300 font-medium text-[11px]">Connecting</span>
-          </div>
         </div>
       </header>
 
@@ -210,22 +205,18 @@
         </div>
 
         <!-- Contacts tab -->
-        <div id="view-contacts" class="tab-view flex-1 flex flex-col justify-start hidden-view w-full">
-          <div class="bg-m3-surface p-5 rounded-3xl border border-m3-outline/10 mb-4 mt-2">
-            <h3 class="text-xs font-semibold text-m3-primary mb-3 uppercase tracking-wider flex items-center gap-1.5">
-              <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> Add Contact
-            </h3>
-            <div class="grid grid-cols-1 gap-2.5 mb-3">
-              <input type="text" id="contact-name" placeholder="Contact Name" class="px-4 py-2.5 bg-m3-surfaceVariant rounded-xl text-sm border border-m3-outline/25 focus:outline-none focus:ring-1 focus:ring-m3-primary text-white">
-              <input type="text" id="contact-phone" maxlength="10" placeholder="10-digit number" class="px-4 py-2.5 bg-m3-surfaceVariant rounded-xl text-sm border border-m3-outline/25 focus:outline-none focus:ring-1 focus:ring-m3-primary text-white">
-            </div>
-            <button onclick="saveContact()" class="w-full py-2.5 bg-m3-primary text-m3-surface hover:opacity-95 text-xs font-bold rounded-xl transition">
-              Save Contact
-            </button>
+        <div id="view-contacts" class="tab-view flex-1 flex flex-col justify-start hidden-view w-full relative h-full">
+          <div class="flex justify-between items-center mb-3 mt-2 px-1">
+            <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Directory</h3>
           </div>
+          
+          <!-- Contacts List Scroller -->
+          <div class="flex-1 overflow-y-auto space-y-2 pr-1 pb-24" id="contacts-list"></div>
 
-          <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 px-1">Directory</h3>
-          <div class="flex-1 overflow-y-auto space-y-2 pr-1" id="contacts-list"></div>
+          <!-- Glowing Floating Action Button (FAB) -->
+          <button onclick="openContactModal()" class="absolute bottom-6 right-2 w-14 h-14 rounded-full bg-m3-primary text-m3-surface hover:bg-opacity-90 active:scale-95 shadow-2xl flex items-center justify-center transition-all z-30" title="Add Contact">
+            <i data-lucide="plus" class="w-6 h-6"></i>
+          </button>
         </div>
 
         <!-- Call logs tab -->
@@ -360,7 +351,33 @@
       </nav>
     </div>
 
-    <!-- 3. OUTGOING RINGING SCREEN OVERLAY -->
+    <!-- 3. CONTACTS POPUP MODAL (ADD & EDIT) -->
+    <div id="contact-modal" class="hidden absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center px-6">
+      <div class="bg-m3-surface w-full max-w-sm p-6 rounded-[2rem] border border-m3-outline/25 shadow-2xl animate-in fade-in zoom-in duration-200">
+        <h3 id="modal-title" class="text-lg font-bold text-white mb-4">Add Contact</h3>
+        <input type="hidden" id="edit-contact-index" value="">
+        <div class="space-y-4 mb-5">
+          <div>
+            <label class="block text-[10px] font-semibold text-m3-primary mb-1.5 uppercase tracking-wider">Contact Name</label>
+            <input type="text" id="contact-name" placeholder="Contact Name" class="w-full px-4 py-3 bg-m3-surfaceVariant rounded-xl text-sm border border-m3-outline/25 focus:outline-none focus:ring-1 focus:ring-m3-primary text-white">
+          </div>
+          <div>
+            <label class="block text-[10px] font-semibold text-m3-primary mb-1.5 uppercase tracking-wider">Phone Number</label>
+            <input type="text" id="contact-phone" maxlength="10" placeholder="10-digit number" class="w-full px-4 py-3 bg-m3-surfaceVariant rounded-xl text-sm border border-m3-outline/25 focus:outline-none focus:ring-1 focus:ring-m3-primary text-white">
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <button onclick="closeContactModal()" class="flex-1 py-3 bg-m3-surfaceVariant hover:bg-slate-800 text-slate-200 text-xs font-bold rounded-xl transition">
+            Cancel
+          </button>
+          <button onclick="saveContact()" class="flex-1 py-3 bg-m3-primary text-m3-surface hover:bg-opacity-90 text-xs font-bold rounded-xl transition">
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. OUTGOING RINGING SCREEN OVERLAY -->
     <div id="screen-calling" class="hidden absolute inset-0 bg-m3-background flex flex-col justify-between items-center px-6 py-16 z-40">
       <div class="text-center mt-12 max-w-md mx-auto">
         <div class="relative w-32 h-32 mx-auto mb-10 flex items-center justify-center">
@@ -382,7 +399,7 @@
       </div>
     </div>
 
-    <!-- 4. INCOMING RINGING SCREEN OVERLAY -->
+    <!-- 5. INCOMING RINGING SCREEN OVERLAY -->
     <div id="screen-incoming" class="hidden absolute inset-0 bg-m3-background flex flex-col justify-between items-center px-6 py-16 z-40">
       <div class="text-center mt-12 max-w-md mx-auto">
         <div class="relative w-32 h-32 mx-auto mb-10 flex items-center justify-center">
@@ -407,7 +424,7 @@
       </div>
     </div>
 
-    <!-- 5. ACTIVE FULL SCREEN CALL PIPELINE -->
+    <!-- 6. ACTIVE FULL SCREEN CALL PIPELINE -->
     <div id="screen-active-call" class="hidden absolute inset-0 bg-black flex flex-col justify-between z-40">
       <div class="absolute inset-0 flex flex-col justify-center items-center bg-black">
         <div class="relative w-full h-full flex items-center justify-center">
@@ -818,12 +835,6 @@
     }
 
     function initiatePeerJS(phoneNumber) {
-      const statusText = document.getElementById('connection-status');
-      const dot = document.getElementById('status-indicator-dot');
-
-      statusText.textContent = "Connecting";
-      dot.className = "w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse";
-
       if (peer) {
         peer.destroy();
       }
@@ -831,9 +842,6 @@
       peer = new Peer(`peervo-${phoneNumber}`);
 
       peer.on('open', async (id) => {
-        statusText.textContent = "Online";
-        dot.className = "w-1.5 h-1.5 rounded-full bg-emerald-500";
-        
         document.getElementById('settings-number').textContent = formatPhone(phoneNumber);
         
         if (isServerAvailable) {
@@ -860,15 +868,10 @@
       });
 
       peer.on('disconnected', () => {
-        statusText.textContent = "Reconnecting";
-        dot.className = "w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse";
         peer.reconnect();
       });
 
       peer.on('error', (err) => {
-        statusText.textContent = "Offline";
-        dot.className = "w-1.5 h-1.5 rounded-full bg-red-500";
-        
         const btnReg = document.getElementById('btn-register');
         if (btnReg) {
           btnReg.disabled = false;
@@ -883,8 +886,8 @@
 
         if (err.type === 'peer-unavailable') {
           logDiag("Target peer is offline. Retrying connection...");
-          const statusText = document.getElementById('calling-status-text');
-          if (statusText) statusText.textContent = "Waking up recipient... (Retrying)";
+          const statusTextEl = document.getElementById('calling-status-text');
+          if (statusTextEl) statusTextEl.textContent = "Waking up recipient... (Retrying)";
           
           if (state.isRetryLoopActive) {
             clearTimeout(state.retryTimeoutId);
@@ -1023,57 +1026,132 @@
       return `${num.slice(0,3)}-${num.slice(3,6)}-${num.slice(6)}`;
     }
 
+    function openContactModal(idx = null) {
+      const modal = document.getElementById('contact-modal');
+      const title = document.getElementById('modal-title');
+      const nameInput = document.getElementById('contact-name');
+      const phoneInput = document.getElementById('contact-phone');
+      const indexInput = document.getElementById('edit-contact-index');
+
+      nameInput.value = '';
+      phoneInput.value = '';
+      indexInput.value = '';
+
+      if (idx !== null) {
+        title.textContent = "Edit Contact";
+        nameInput.value = contacts[idx].name;
+        phoneInput.value = contacts[idx].phone;
+        indexInput.value = idx;
+      } else {
+        title.textContent = "Add Contact";
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeContactModal() {
+      const modal = document.getElementById('contact-modal');
+      modal.classList.add('hidden');
+    }
+
     function saveContact() {
       const name = document.getElementById('contact-name').value.trim();
       const phone = document.getElementById('contact-phone').value.trim();
+      const indexVal = document.getElementById('edit-contact-index').value;
 
       if (!name || phone.length !== 10 || !/^\d+$/.test(phone)) {
         showToast("Please enter a valid name and 10-digit number.");
         return;
       }
 
-      contacts.push({ name, phone });
+      if (indexVal !== '') {
+        const idx = parseInt(indexVal);
+        contacts[idx] = { name, phone };
+        showToast(`Updated ${name}`);
+      } else {
+        contacts.push({ name, phone });
+        showToast(`Added ${name}`);
+      }
+
       localStorage.setItem('peervo_contacts', JSON.stringify(contacts));
-      
-      document.getElementById('contact-name').value = '';
-      document.getElementById('contact-phone').value = '';
+      closeContactModal();
       renderContacts();
-      showToast(`Added ${name}`);
     }
+
+    function toggleContactDropdown(event, idx) {
+      event.stopPropagation();
+      document.querySelectorAll('[id^="dropdown-"]').forEach(d => {
+        if (d.id !== `dropdown-${idx}`) d.classList.add('hidden');
+      });
+
+      const dropdown = document.getElementById(`dropdown-${idx}`);
+      if (dropdown) dropdown.classList.toggle('hidden');
+    }
+
+    function editContact(idx) {
+      const dropdown = document.getElementById(`dropdown-${idx}`);
+      if (dropdown) dropdown.classList.add('hidden');
+      openContactModal(idx);
+    }
+
+    function deleteContact(idx) {
+      const name = contacts[idx].name;
+      contacts.splice(idx, 1);
+      localStorage.setItem('peervo_contacts', JSON.stringify(contacts));
+      renderContacts();
+      showToast(`Deleted ${name}`);
+    }
+
+    // Dismiss options menus when tapping elsewhere on-screen
+    window.addEventListener('click', () => {
+      document.querySelectorAll('[id^="dropdown-"]').forEach(d => d.classList.add('hidden'));
+    });
 
     function renderContacts() {
       const list = document.getElementById('contacts-list');
       if (contacts.length === 0) {
-        list.innerHTML = `<div class="text-center py-6 text-xs text-slate-500 bg-m3-surface rounded-2xl border border-m3-outline/5">No contacts saved</div>`;
+        list.innerHTML = `<div class="text-center py-12 text-xs text-slate-500 bg-m3-surface rounded-3xl border border-m3-outline/5">No contacts saved</div>`;
         return;
       }
 
-      list.innerHTML = contacts.map((c, idx) => `
-        <div class="flex items-center justify-between p-3.5 bg-m3-surface rounded-2xl border border-m3-outline/5">
-          <div>
-            <p class="font-bold text-white text-sm">${c.name}</p>
-            <p class="text-xs text-m3-primary mt-0.5">${formatPhone(c.phone)}</p>
+      list.innerHTML = contacts.map((c, idx) => {
+        const initial = c.name ? c.name.charAt(0).toUpperCase() : '?';
+        return `
+          <div class="flex items-center justify-between p-3.5 bg-m3-surface rounded-2xl border border-m3-outline/5 relative">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-m3-primaryContainer text-m3-onPrimaryContainer font-bold flex items-center justify-center text-sm shadow-inner uppercase">
+                ${initial}
+              </div>
+              <div>
+                <p class="font-bold text-white text-sm">${c.name}</p>
+                <p class="text-xs text-slate-400 mt-0.5">${formatPhone(c.phone)}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1">
+              <button onclick="dialAndCall('${c.phone}', false)" class="p-2 text-emerald-400 hover:bg-m3-surfaceVariant rounded-xl transition" title="Voice Call">
+                <i data-lucide="phone" class="w-4.5 h-4.5"></i>
+              </button>
+              <button onclick="dialAndCall('${c.phone}', true)" class="p-2 text-m3-primary hover:bg-m3-surfaceVariant rounded-xl transition" title="Video Call">
+                <i data-lucide="video" class="w-4.5 h-4.5"></i>
+              </button>
+              <div class="relative dropdown-container">
+                <button onclick="toggleContactDropdown(event, ${idx})" class="p-2 text-slate-400 hover:bg-m3-surfaceVariant rounded-xl transition">
+                  <i data-lucide="more-vertical" class="w-4.5 h-4.5"></i>
+                </button>
+                <div id="dropdown-${idx}" class="hidden absolute right-0 top-10 w-28 bg-m3-surfaceVariant rounded-xl border border-m3-outline/20 shadow-xl z-40 py-1">
+                  <button onclick="editContact(${idx})" class="w-full text-left px-3 py-2 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-2">
+                    <i data-lucide="edit" class="w-3.5 h-3.5 text-m3-primary"></i> Edit
+                  </button>
+                  <button onclick="deleteContact(${idx})" class="w-full text-left px-3 py-2 hover:bg-red-950/20 text-red-400 text-xs font-semibold flex items-center gap-2">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5 text-red-400"></i> Delete
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="flex gap-1.5">
-            <button onclick="dialAndCall('${c.phone}', false)" class="p-2 bg-m3-surfaceVariant hover:bg-slate-800 text-emerald-400 rounded-lg transition">
-              <i data-lucide="phone" class="w-4 h-4"></i>
-            </button>
-            <button onclick="dialAndCall('${c.phone}', true)" class="p-2 bg-m3-surfaceVariant hover:bg-slate-800 text-m3-primary rounded-lg transition">
-              <i data-lucide="video" class="w-4 h-4"></i>
-            </button>
-            <button onclick="deleteContact(${idx})" class="p-2 bg-m3-surfaceVariant hover:bg-red-950/20 text-red-400 rounded-lg transition">
-              <i data-lucide="trash-2" class="w-4 h-4"></i>
-            </button>
-          </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
       lucide.createIcons();
-    }
-
-    function deleteContact(idx) {
-      contacts.splice(idx, 1);
-      localStorage.setItem('peervo_contacts', JSON.stringify(contacts));
-      renderContacts();
     }
 
     function dialAndCall(phone, isVideo) {
@@ -1262,7 +1340,6 @@
         state.pendingAccept = true;
         document.getElementById('incoming-type-text').textContent = "Connecting call...";
         
-        // Double-Bridge Reverse Handshake: if call doesn't connect in 4s, place outbound back-bridge
         const deepLinkedCaller = new URLSearchParams(window.location.search).get('incoming_caller');
         if (deepLinkedCaller && deepLinkedCaller.length === 10) {
           clearTimeout(state.fallbackCallId);
@@ -1311,7 +1388,7 @@
         const signalConn = peer.connect(targetPeerId);
         signalConn.on('open', () => {
           signalConn.send({ type: signalType });
-          setTimeout(() => signalConn.close(), 500);
+          setTimeout(() => signalConn.close(), 50);
         });
       }
     }
@@ -1628,8 +1705,6 @@
       }
       
       myPhoneNumber = "";
-      document.getElementById('connection-status').textContent = "Offline";
-      document.getElementById('status-indicator-dot').className = "w-1.5 h-1.5 rounded-full bg-slate-600";
       
       showScreen('screen-register');
       showToast("Line deregistered.");
