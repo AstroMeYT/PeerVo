@@ -84,8 +84,8 @@ messaging.onBackgroundMessage((payload) => {
     const notificationTitle = 'PeerVo - Incoming Call';
     const notificationOptions = {
       body: `Incoming ${isVideo} Call from ${caller}`,
-      icon: 'https://placehold.co/128x128/6366f1/ffffff?text=📞',
-      badge: 'https://placehold.co/64x64/6366f1/ffffff?text=📞',
+      icon: 'logo.png',
+      badge: 'logo.png',
       vibrate: [300, 150, 300, 150, 300, 150, 600],
       tag: 'incoming-call-notification',
       requireInteraction: true,
